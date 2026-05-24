@@ -187,7 +187,7 @@ export const classCalendarRepository = {
           submitStatus: target?.status === "submitted" ? "submitted" : target?.status === "late" ? "late" : "not_submitted",
           score: null,
           reviewStatus: target?.reviewed ? "reviewed" : target?.status === "submitted" ? "pending" : "none",
-          detailHref: `/teacher/classes/${assignment.classId}/assignments/${assignment.id}`
+          detailHref: target?.status === "submitted" ? (input.studentId === "student-1" ? "/teacher/submissions/submission-1" : "/teacher/submissions/submission-2") : undefined
         };
       });
   },

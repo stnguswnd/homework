@@ -1,75 +1,202 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { TeacherLayout } from "@/components/layout/TeacherLayout";
-import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
-import { Input } from "@/components/ui/Input";
-import { Textarea } from "@/components/ui/Textarea";
 import { mockRepository } from "@/mocks/mockRepository";
-import type { Class } from "@/types/class";
+import type { Assignment } from "@/types/assignment";
 
-export default function ClassesPage() {
-  const [classes, setClasses] = useState<Class[]>(() => mockRepository.getClasses());
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [message, setMessage] = useState("");
+type Subject = "Phonics" | "AL" | "AR";
+type SubjectFilter = "전체" | Subject;
 
-  function createClass(formData: FormData) {
-    const name = String(formData.get("name") ?? "").trim();
-    if (!name) {
-      setMessage("반 이름을 입력해주세요.");
-      return;
-    }
-    const classItem = mockRepository.createClass({
-      name,
-      description: String(formData.get("description") ?? "").trim()
-    });
-    setClasses((current) => [classItem, ...current]);
-    setIsCreateOpen(false);
-    setMessage("반이 생성되었습니다.");
-  }
+type StudentHomework = {
+  subject: Subject;
+  title: string;
+  href: string;
+};
+
+type TeamStudent = {
+  id: string;
+  name: string;
+  href: string;
+  reviewRequested: StudentHomework[];
+  incomplete: StudentHomework[];
+};
+
+type Team = {
+  id: string;
+  name: string;
+  subjects: Subject[];
+  students: TeamStudent[];
+};
+
+function assignmentSubject(assignment: Assignment): Subject {
+  if (assignment.id === "assignment-1") return "AL";
+  if (assignment.id === "assignment-2") return "AR";
+  return "Phonics";
+}
+
+function buildTeams(): Team[] {
+  return mockRepository.getClasses().map((classItem) => {
+    const students = mockRepository.getStudentsByClassId(classItem.id);
+    const assignments = mockRepository.getAssignmentsByClassId(classItem.id);
+    return {
+      id: classItem.id,
+      name: classItem.name,
+      subjects: ["Phonics", "AL", "AR"],
+      students: students.map((student) => {
+        const reviewRequested: StudentHomework[] = [];
+        const incomplete: StudentHomework[] = [];
+        for (const assignment of assignments) {
+          const submission = mockRepository
+            .getSubmissionsByAssignmentId(assignment.id)
+            .find((item) => item.studentId === student.id);
+          const homework = {
+            subject: assignmentSubject(assignment),
+            title: assignment.title,
+            href: `/teacher/assignments/${assignment.id}`
+          };
+          if (!submission || submission.status === "not_submitted") {
+            incomplete.push(homework);
+          } else if (submission.status === "submitted") {
+            reviewRequested.push(homework);
+          }
+        }
+        return {
+          id: student.id,
+          name: student.name,
+          href: `/teacher/students/${student.id}`,
+          reviewRequested,
+          incomplete
+        };
+      })
+    };
+  });
+}
+
+function filterHomeworks(items: StudentHomework[], filter: SubjectFilter) {
+  if (filter === "전체") return items;
+  return items.filter((item) => item.subject === filter);
+}
+
+function HomeworkPill({ homework, tone }: { homework: StudentHomework; tone: "review" | "incomplete" }) {
+  return (
+    <a
+      href={homework.href}
+      onClick={(event) => event.stopPropagation()}
+      className={`inline-flex max-w-full items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold ${
+        tone === "review"
+          ? "border-blue-100 bg-blue-50 text-blue-700"
+          : "border-red-100 bg-red-50 text-red-700"
+      }`}
+    >
+      <span className="shrink-0 rounded-full bg-white/80 px-1.5 py-0.5 text-[11px] font-bold">{homework.subject}</span>
+      <span className="truncate">{homework.title}</span>
+    </a>
+  );
+}
+
+function TeamCard({
+  team,
+  filter,
+  onFilterChange
+}: {
+  team: Team;
+  filter: SubjectFilter;
+  onFilterChange: (filter: SubjectFilter) => void;
+}) {
+  const filters: SubjectFilter[] = ["전체", ...team.subjects];
+  const router = useRouter();
 
   return (
-    <TeacherLayout title="반 목록">
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <p className="text-sm font-semibold text-slate-500">{message}</p>
-        <Button onClick={() => setIsCreateOpen(true)}>반 만들기</Button>
+    <section className="flex min-h-[620px] w-[320px] shrink-0 flex-col rounded-lg border border-line bg-white p-4 shadow-soft">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-bold">{team.name}</h2>
+          <p className="mt-1 text-xs font-semibold text-slate-500">학생 {team.students.length}명</p>
+        </div>
+        <Button type="button" variant="secondary" className="min-h-9 px-3 py-1.5 text-xs">과목 추가</Button>
       </div>
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {classes.map((classItem) => (
-          <Card key={classItem.id}>
-            <div className="flex items-start justify-between gap-3">
-              <h2 className="text-lg font-bold">{classItem.name}</h2>
-              <Badge tone={classItem.status === "active" ? "green" : "gray"}>{classItem.status}</Badge>
-            </div>
-            <p className="mt-2 text-sm text-slate-600">{classItem.description}</p>
-            <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
-              <div><dt className="text-slate-500">학생</dt><dd className="font-bold">{classItem.studentCount}명</dd></div>
-              <div><dt className="text-slate-500">진행 숙제</dt><dd className="font-bold">{classItem.activeAssignmentCount}개</dd></div>
-            </dl>
-            <Button href={`/teacher/classes/${classItem.id}`} className="mt-4 w-full" variant="secondary">상세 보기</Button>
-          </Card>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        {filters.map((item) => (
+          <button
+            key={item}
+            className={`rounded-full border px-3 py-1.5 text-xs font-bold transition ${
+              filter === item ? "border-action bg-action text-white" : "border-line bg-white text-slate-600 hover:border-action"
+            }`}
+            onClick={() => onFilterChange(item)}
+          >
+            {item}
+          </button>
         ))}
       </div>
-      {isCreateOpen && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/35 p-4" role="dialog" aria-modal="true">
-          <form action={createClass} className="w-full max-w-lg rounded-lg bg-white p-5 shadow-soft">
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <h2 className="text-lg font-bold">반 만들기</h2>
-              <button type="button" className="rounded-md px-3 py-2 text-sm font-semibold text-slate-500 hover:bg-slate-100" onClick={() => setIsCreateOpen(false)}>닫기</button>
-            </div>
-            <div className="grid gap-4">
-              <label className="grid gap-2 text-sm font-semibold">반 이름<Input name="name" required placeholder="월수 Basic Speaking" /></label>
-              <label className="grid gap-2 text-sm font-semibold">반 설명<Textarea name="description" placeholder="초등 4-5학년 말하기 기초반" /></label>
-              <div className="flex justify-end gap-2">
-                <Button type="button" variant="secondary" onClick={() => setIsCreateOpen(false)}>취소</Button>
-                <Button type="submit">생성</Button>
+
+      <div className="mt-4 grid flex-1 gap-3 overflow-y-auto pr-1">
+        {team.students.map((student) => {
+          const reviewRequested = filterHomeworks(student.reviewRequested, filter);
+          const incomplete = filterHomeworks(student.incomplete, filter);
+          return (
+            <article
+              key={student.id}
+              className="cursor-pointer rounded-md border border-line bg-slate-50 p-3 transition hover:border-action hover:bg-blue-50/40"
+              role="button"
+              tabIndex={0}
+              onClick={() => router.push(student.href)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") router.push(student.href);
+              }}
+            >
+              <h3 className="font-bold">{student.name}</h3>
+              <div className="mt-3 grid gap-2 text-sm">
+                <div className="grid grid-cols-[64px_1fr] gap-2">
+                  <p className="pt-1 text-xs font-bold text-blue-700">검토요청</p>
+                  <div className="flex min-w-0 flex-wrap gap-1.5">
+                    {reviewRequested.length > 0 ? reviewRequested.map((homework) => <HomeworkPill key={`${student.id}-review-${homework.subject}-${homework.title}`} homework={homework} tone="review" />) : <span className="text-xs text-slate-400">없음</span>}
+                  </div>
+                </div>
+                <div className="grid grid-cols-[64px_1fr] gap-2 border-t border-line pt-2">
+                  <p className="pt-1 text-xs font-bold text-red-700">미완료</p>
+                  <div className="flex min-w-0 flex-wrap gap-1.5">
+                    {incomplete.length > 0 ? incomplete.map((homework) => <HomeworkPill key={`${student.id}-incomplete-${homework.subject}-${homework.title}`} homework={homework} tone="incomplete" />) : <span className="text-xs text-slate-400">없음</span>}
+                  </div>
+                </div>
               </div>
-            </div>
-          </form>
+            </article>
+          );
+        })}
+      </div>
+      <Button href={`/teacher/classes/${team.id}`} className="mt-4 w-full" variant="secondary">반 상세 보기</Button>
+    </section>
+  );
+}
+
+export default function ClassesPage() {
+  const teams = buildTeams();
+  const [filters, setFilters] = useState<Record<string, SubjectFilter>>(() =>
+    Object.fromEntries(teams.map((team) => [team.id, "전체"]))
+  );
+
+  return (
+    <TeacherLayout title="팀 관리">
+      <div className="mb-5">
+        <h2 className="text-lg font-bold">팀별 숙제 상태</h2>
+        <p className="mt-1 text-sm text-slate-500">팀 카드를 좌우로 비교하면서 학생별 검토요청과 미완료 숙제를 확인합니다.</p>
+      </div>
+
+      <div className="overflow-x-auto pb-3">
+        <div className="flex min-w-max gap-4">
+          {teams.map((team) => (
+            <TeamCard
+              key={team.id}
+              team={team}
+              filter={filters[team.id] ?? "전체"}
+              onFilterChange={(filter) => setFilters((current) => ({ ...current, [team.id]: filter }))}
+            />
+          ))}
         </div>
-      )}
+      </div>
     </TeacherLayout>
   );
 }

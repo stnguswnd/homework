@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 
 const nav = [
   ["대시보드", "/teacher/dashboard"],
-  ["반 관리", "/teacher/classes"],
+  ["팀 관리", "/teacher/classes"],
   ["학생 관리", "/teacher/students"],
   ["숙제 관리", "/teacher/assignments"],
   ["학생 화면", "/student"]

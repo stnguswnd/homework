@@ -1,22 +1,27 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { TeacherLayout } from "@/components/layout/TeacherLayout";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
+import {
+  classCalendarRepository,
+  homeworkTypeLabel
+} from "@/features/class-calendar/repositories/classCalendarRepository";
 import { formatDateTime, formatDue } from "@/lib/format";
 
-type ViewMode = "assignment" | "homework";
-type PageMode = "list" | "detail";
+type PageMode = "list" | "assignmentDetail" | "submissionDetail" | "homeworkDetail";
 type HomeworkStatus = "published" | "draft";
+type Subject = "Phonics" | "AL" | "AR";
 type SubmissionStatus = "submitted" | "not_submitted" | "late";
 type FeedbackStatus = "needed" | "done" | "none";
 
 type ClassRow = { id: string; name: string; description: string };
-type Homework = { id: string; title: string; description: string; type: string; status: HomeworkStatus };
+type Homework = { id: string; title: string; description: string; type: string; subject: Subject; status: HomeworkStatus };
 type Assignment = {
   id: string;
   homeworkId: string;
@@ -50,9 +55,9 @@ const classes: ClassRow[] = [
 ];
 
 const homeworks: Homework[] = [
-  { id: "hw_1", title: "Discovery Unit 1 Speaking Homework", description: "원어민 음성을 듣고 같은 속도로 읽어 보세요.", type: "듣기/녹음", status: "published" },
-  { id: "hw_2", title: "Reading Plus Shadowing 03", description: "문장을 듣고 자연스럽게 따라 읽습니다.", type: "문장 따라 읽기", status: "published" },
-  { id: "hw_3", title: "Picture Talk Practice", description: "이미지를 보고 보이는 내용을 영어로 설명합니다.", type: "이미지 보고 말하기", status: "draft" }
+  { id: "hw_1", title: "Discovery Unit 1 Speaking Homework", description: "원어민 음성을 듣고 같은 속도로 읽어 보세요.", type: "듣기/녹음", subject: "AL", status: "published" },
+  { id: "hw_2", title: "Reading Plus Shadowing 03", description: "문장을 듣고 자연스럽게 따라 읽습니다.", type: "문장 따라 읽기", subject: "AR", status: "published" },
+  { id: "hw_3", title: "Picture Talk Practice", description: "이미지를 보고 보이는 내용을 영어로 설명합니다.", type: "이미지 보고 말하기", subject: "Phonics", status: "draft" }
 ];
 
 const assignments: Assignment[] = [
@@ -72,6 +77,7 @@ const submissions: Submission[] = [
 ];
 
 const classFilterOptions = ["전체 반", ...classes.map((classItem) => classItem.name)];
+const subjectFilterOptions = ["전체 과목", "Phonics", "AL", "AR"];
 const statusFilterOptions = ["전체", "published", "draft", "마감 임박", "마감 지남", "미제출 있음"];
 const sortOptions = ["최신순", "마감 임박순", "제출률 낮은 순", "제출률 높은 순"];
 
@@ -119,11 +125,23 @@ function isPastDue(dueAt: string) {
 }
 
 export default function AssignmentsPage() {
+  return (
+    <Suspense fallback={<TeacherLayout title="숙제 목록"><Card><p className="text-sm text-slate-500">숙제 목록을 불러오는 중입니다.</p></Card></TeacherLayout>}>
+      <AssignmentsPageContent />
+    </Suspense>
+  );
+}
+
+function AssignmentsPageContent() {
+  const searchParams = useSearchParams();
   const [pageMode, setPageMode] = useState<PageMode>("list");
   const [selectedAssignmentId, setSelectedAssignmentId] = useState("as_1");
-  const [viewMode, setViewMode] = useState<ViewMode>("assignment");
+  const [selectedHomeworkId, setSelectedHomeworkId] = useState("hw_1");
+  const calendarAssignmentId = searchParams.get("calendarAssignmentId") ?? "";
+  const focusAssignmentId = searchParams.get("assignmentId") ?? "";
   const [query, setQuery] = useState("");
   const [classFilter, setClassFilter] = useState("전체 반");
+  const [subjectFilter, setSubjectFilter] = useState("전체 과목");
   const [statusFilter, setStatusFilter] = useState("전체");
   const [sort, setSort] = useState("최신순");
 
@@ -139,13 +157,14 @@ export default function AssignmentsPage() {
       .filter(({ assignment, homework, classItem }) => {
         const matchesQuery = !query.trim() || homework.title.toLowerCase().includes(query.trim().toLowerCase());
         const matchesClass = classFilter === "전체 반" || classItem.name === classFilter;
+        const matchesSubject = subjectFilter === "전체 과목" || homework.subject === subjectFilter;
         const matchesStatus =
           statusFilter === "전체" ||
           assignment.status === statusFilter ||
           (statusFilter === "마감 임박" && isDueSoon(assignment.dueAt)) ||
           (statusFilter === "마감 지남" && isPastDue(assignment.dueAt)) ||
           (statusFilter === "미제출 있음" && assignment.unsubmittedCount > 0);
-        return matchesQuery && matchesClass && matchesStatus;
+        return matchesQuery && matchesClass && matchesSubject && matchesStatus;
       })
       .sort((a, b) => {
         if (sort === "마감 임박순") return new Date(a.assignment.dueAt).getTime() - new Date(b.assignment.dueAt).getTime();
@@ -153,7 +172,7 @@ export default function AssignmentsPage() {
         if (sort === "제출률 높은 순") return progressPercent(b.assignment) - progressPercent(a.assignment);
         return new Date(b.assignment.assignedAt).getTime() - new Date(a.assignment.assignedAt).getTime();
       });
-  }, [classFilter, query, sort, statusFilter]);
+  }, [classFilter, query, sort, statusFilter, subjectFilter]);
 
   const homeworkRows = useMemo(() => {
     return homeworks
@@ -170,12 +189,63 @@ export default function AssignmentsPage() {
       .filter((row) => row.rows.length > 0);
   }, [assignmentRows]);
 
-  function openDetail(assignmentId: string) {
+  function openSubmissionDetail(assignmentId: string) {
     setSelectedAssignmentId(assignmentId);
-    setPageMode("detail");
+    setPageMode("submissionDetail");
   }
 
-  if (pageMode === "detail") {
+  function openAssignmentDetail(assignmentId: string) {
+    setSelectedAssignmentId(assignmentId);
+    setPageMode("assignmentDetail");
+  }
+
+  function openHomeworkDetail(homeworkId: string) {
+    setSelectedHomeworkId(homeworkId);
+    setPageMode("homeworkDetail");
+  }
+
+  if (calendarAssignmentId || focusAssignmentId) {
+    const calendarState = classCalendarRepository.loadState();
+    const targetCalendarId = calendarAssignmentId || focusAssignmentId;
+    const calendarAssignment = classCalendarRepository.getAssignmentById(targetCalendarId, calendarState);
+    const targets = classCalendarRepository.getTargetsByAssignmentId(targetCalendarId, calendarState);
+    if (calendarAssignment) {
+      return (
+        <TeacherLayout title="숙제 관리">
+          <CalendarAssignmentFocus assignment={calendarAssignment} targets={targets} />
+        </TeacherLayout>
+      );
+    }
+
+    const regularAssignment = assignments.find((assignment) => assignment.id === focusAssignmentId);
+    if (regularAssignment) {
+      const homework = homeworks.find((item) => item.id === regularAssignment.homeworkId) ?? homeworks[0];
+      const classItem = classes.find((item) => item.id === regularAssignment.classId) ?? classes[0];
+      return (
+        <TeacherLayout title="숙제 관리">
+          <AssignmentFocus assignment={regularAssignment} homework={homework} classItem={classItem} />
+        </TeacherLayout>
+      );
+    }
+  }
+
+  if (pageMode === "assignmentDetail") {
+    return (
+      <TeacherLayout title="배정 상세">
+        <AssignmentOverviewDetail assignmentId={selectedAssignmentId} onBack={() => setPageMode("list")} onOpenSubmissions={openSubmissionDetail} />
+      </TeacherLayout>
+    );
+  }
+
+  if (pageMode === "homeworkDetail") {
+    return (
+      <TeacherLayout title="숙제 상세">
+        <HomeworkOverviewDetail homeworkId={selectedHomeworkId} onBack={() => setPageMode("list")} onOpenAssignment={openAssignmentDetail} />
+      </TeacherLayout>
+    );
+  }
+
+  if (pageMode === "submissionDetail") {
     return (
       <TeacherLayout title="제출 관리">
         <AssignmentSubmissionDetail assignmentId={selectedAssignmentId} onBack={() => setPageMode("list")} />
@@ -186,36 +256,152 @@ export default function AssignmentsPage() {
   return (
     <TeacherLayout title="숙제 목록">
       <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="inline-flex rounded-md border border-line bg-white p-1">
-          <button className={`rounded px-4 py-2 text-sm font-bold ${viewMode === "assignment" ? "bg-action text-white" : "text-slate-600"}`} onClick={() => setViewMode("assignment")}>배정별 보기</button>
-          <button className={`rounded px-4 py-2 text-sm font-bold ${viewMode === "homework" ? "bg-action text-white" : "text-slate-600"}`} onClick={() => setViewMode("homework")}>숙제별 보기</button>
+        <div>
+          <h2 className="text-lg font-bold">숙제별 보기</h2>
+          <p className="mt-1 text-sm text-slate-500">숙제 템플릿 기준으로 과목과 반별 배정 현황을 확인합니다.</p>
         </div>
         <Button href="/teacher/assignments/new">숙제 만들기</Button>
       </div>
 
       <Card className="mb-4">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           <label className="grid gap-2 text-sm font-semibold">숙제 검색<Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="숙제명 검색" /></label>
+          <label className="grid gap-2 text-sm font-semibold">과목 필터<Select value={subjectFilter} onChange={(event) => setSubjectFilter(event.target.value)}>{subjectFilterOptions.map((item) => <option key={item}>{item}</option>)}</Select></label>
           <label className="grid gap-2 text-sm font-semibold">반 필터<Select value={classFilter} onChange={(event) => setClassFilter(event.target.value)}>{classFilterOptions.map((item) => <option key={item}>{item}</option>)}</Select></label>
           <label className="grid gap-2 text-sm font-semibold">상태 필터<Select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>{statusFilterOptions.map((item) => <option key={item}>{item}</option>)}</Select></label>
           <label className="grid gap-2 text-sm font-semibold">정렬<Select value={sort} onChange={(event) => setSort(event.target.value)}>{sortOptions.map((item) => <option key={item}>{item}</option>)}</Select></label>
         </div>
       </Card>
 
-      {viewMode === "assignment" ? (
-        <div className="grid gap-4">
-          {assignmentRows.map((row) => <AssignmentCard key={row.assignment.id} {...row} onOpenDetail={openDetail} />)}
-        </div>
-      ) : (
-        <div className="grid gap-4">
-          {homeworkRows.map((row) => <HomeworkCard key={row.homework.id} {...row} onOpenDetail={openDetail} />)}
-        </div>
-      )}
+      <div className="grid gap-4">
+        {homeworkRows.map((row) => <HomeworkCard key={row.homework.id} {...row} onOpenHomeworkDetail={openHomeworkDetail} onOpenAssignmentDetail={openAssignmentDetail} onOpenSubmissionDetail={openSubmissionDetail} />)}
+      </div>
     </TeacherLayout>
   );
 }
 
-function AssignmentCard({ assignment, homework, classItem, onOpenDetail }: { assignment: Assignment; homework: Homework; classItem: ClassRow; onOpenDetail: (assignmentId: string) => void }) {
+function CalendarAssignmentFocus({
+  assignment,
+  targets
+}: {
+  assignment: NonNullable<ReturnType<typeof classCalendarRepository.getAssignmentById>>;
+  targets: ReturnType<typeof classCalendarRepository.getTargetsByAssignmentId>;
+}) {
+  const submittedCount = targets.filter((target) => target.status === "submitted" || target.status === "late").length;
+  const missingCount = Math.max(0, targets.length - submittedCount);
+  const feedbackNeeded = targets.filter((target) => target.status !== "assigned" && !target.reviewed).length;
+  const feedbackDone = targets.filter((target) => target.reviewed).length;
+  const progress = targets.length === 0 ? 0 : Math.round((submittedCount / targets.length) * 100);
+
+  return (
+    <div className="grid gap-4">
+      <div className="flex justify-end">
+        <Button href="/teacher/assignments" variant="secondary">전체 숙제 목록</Button>
+      </div>
+      <Card>
+        <div className="grid gap-4 lg:grid-cols-[1fr_auto]">
+          <div>
+            <div className="flex flex-wrap gap-2">
+              <Badge tone="blue">{homeworkTypeLabel(assignment.type)}</Badge>
+              <Badge tone={assignment.status === "published" ? "green" : "gray"}>{assignment.status === "published" ? "게시됨" : "나만 보기"}</Badge>
+              <Badge tone="yellow">마감: {formatDue(assignment.dueAt)}</Badge>
+            </div>
+            <h2 className="mt-3 text-xl font-bold">{assignment.title}</h2>
+            <p className="mt-2 text-slate-600">{assignment.description || "학생에게 보일 숙제 안내입니다."}</p>
+          </div>
+          <div className="grid gap-2 sm:flex lg:grid">
+            <Button href={`/teacher/assignments/new?calendarAssignmentId=${assignment.id}&classId=${assignment.classId}`} variant="secondary">내용 수정</Button>
+            <Button href={`/teacher/assignments/new?calendarAssignmentId=${assignment.id}&classId=${assignment.classId}&mode=assignment`} variant="secondary">배정 수정</Button>
+          </div>
+        </div>
+      </Card>
+      <div className="grid gap-3 md:grid-cols-4">
+        <Metric label="대상 학생 수" value={targets.length} />
+        <Metric label="제출 완료 수" value={submittedCount} />
+        <Metric label="미제출 수" value={missingCount} />
+        <Metric label="제출률" value={progress} suffix="%" />
+      </div>
+      <Card>
+        <h3 className="text-lg font-bold">이 숙제 제출/피드백 요약</h3>
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          <div className="rounded-md border border-line bg-slate-50 p-4">
+            <p className="text-sm text-slate-500">피드백 필요</p>
+            <p className="mt-2 text-2xl font-bold">{feedbackNeeded}명</p>
+          </div>
+          <div className="rounded-md border border-line bg-slate-50 p-4">
+            <p className="text-sm text-slate-500">피드백 완료</p>
+            <p className="mt-2 text-2xl font-bold">{feedbackDone}명</p>
+          </div>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function AssignmentFocus({
+  assignment,
+  homework,
+  classItem
+}: {
+  assignment: Assignment;
+  homework: Homework;
+  classItem: ClassRow;
+}) {
+  const progress = progressPercent(assignment);
+  return (
+    <div className="grid gap-4">
+      <div className="flex justify-end">
+        <Button href="/teacher/assignments" variant="secondary">전체 숙제 목록</Button>
+      </div>
+      <Card>
+        <div className="grid gap-4 lg:grid-cols-[1fr_auto]">
+          <div>
+            <div className="flex flex-wrap gap-2">
+              <Badge tone="blue">{homework.subject}</Badge>
+              <Badge>{homework.type}</Badge>
+              <Badge tone={statusTone(assignment.status)}>{assignment.status === "published" ? "게시됨" : "임시저장"}</Badge>
+              <Badge tone="yellow">마감: {formatDue(assignment.dueAt)}</Badge>
+            </div>
+            <h2 className="mt-3 text-xl font-bold">{homework.title}</h2>
+            <p className="mt-2 text-slate-600">{homework.description}</p>
+            <p className="mt-3 text-sm font-semibold text-action">{classItem.name}</p>
+          </div>
+          <div className="grid gap-2 sm:flex lg:grid">
+            <Button href={`/teacher/assignments/new?assignmentId=${homework.id}`} variant="secondary">내용 수정</Button>
+            <Button href={`/teacher/assignments/new?assignmentId=${homework.id}&assignmentTarget=${assignment.id}`} variant="secondary">배정 수정</Button>
+          </div>
+        </div>
+      </Card>
+      <div className="grid gap-3 md:grid-cols-4">
+        <Metric label="대상 학생 수" value={assignment.targetStudentCount} />
+        <Metric label="제출 완료 수" value={assignment.submittedCount} />
+        <Metric label="미제출 수" value={assignment.unsubmittedCount} />
+        <Metric label="제출률" value={progress} suffix="%" />
+      </div>
+      <Card>
+        <h3 className="text-lg font-bold">이 숙제 반별 제출 요약</h3>
+        <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100">
+          <div className="h-full rounded-full bg-action" style={{ width: `${progress}%` }} />
+        </div>
+        <p className="mt-3 text-sm text-slate-600">피드백 필요 {assignment.feedbackNeededCount}명 · 피드백 완료 {assignment.feedbackDoneCount}명</p>
+      </Card>
+    </div>
+  );
+}
+
+function AssignmentCard({
+  assignment,
+  homework,
+  classItem,
+  onOpenAssignmentDetail,
+  onOpenSubmissionDetail
+}: {
+  assignment: Assignment;
+  homework: Homework;
+  classItem: ClassRow;
+  onOpenAssignmentDetail: (assignmentId: string) => void;
+  onOpenSubmissionDetail: (assignmentId: string) => void;
+}) {
   const progress = progressPercent(assignment);
   return (
     <Card>
@@ -236,12 +422,12 @@ function AssignmentCard({ assignment, homework, classItem, onOpenDetail }: { ass
           </div>
         </div>
         <div className="grid gap-2 sm:flex xl:grid xl:min-w-36">
-          <Button type="button" variant="secondary" onClick={() => window.alert("숙제 내용과 배정 정보 상세 목업입니다.")}>상세</Button>
-          <Button type="button" variant="secondary" onClick={() => window.alert("이 반의 마감일, 공개 상태, 대상 학생 수정 목업입니다.")}>배정 수정</Button>
+          <Button type="button" variant="secondary" onClick={() => onOpenAssignmentDetail(assignment.id)}>상세</Button>
+          <Button href={`/teacher/assignments/new?assignmentId=${homework.id}&assignmentTarget=${assignment.id}`} variant="secondary">배정 수정</Button>
           {assignment.status === "draft" ? (
             <Button type="button" disabled>게시 후 확인 가능</Button>
           ) : (
-            <Button type="button" onClick={() => onOpenDetail(assignment.id)}>제출 현황</Button>
+            <Button type="button" onClick={() => onOpenSubmissionDetail(assignment.id)}>제출 현황</Button>
           )}
         </div>
       </div>
@@ -249,14 +435,32 @@ function AssignmentCard({ assignment, homework, classItem, onOpenDetail }: { ass
   );
 }
 
-function HomeworkCard({ homework, rows, targetCount, submittedCount, unsubmittedCount, onOpenDetail }: { homework: Homework; rows: Array<{ assignment: Assignment; homework: Homework; classItem: ClassRow }>; targetCount: number; submittedCount: number; unsubmittedCount: number; onOpenDetail: (assignmentId: string) => void }) {
+function HomeworkCard({
+  homework,
+  rows,
+  targetCount,
+  submittedCount,
+  unsubmittedCount,
+  onOpenHomeworkDetail,
+  onOpenAssignmentDetail,
+  onOpenSubmissionDetail
+}: {
+  homework: Homework;
+  rows: Array<{ assignment: Assignment; homework: Homework; classItem: ClassRow }>;
+  targetCount: number;
+  submittedCount: number;
+  unsubmittedCount: number;
+  onOpenHomeworkDetail: (homeworkId: string) => void;
+  onOpenAssignmentDetail: (assignmentId: string) => void;
+  onOpenSubmissionDetail: (assignmentId: string) => void;
+}) {
   return (
     <Card>
       <div className="grid gap-4 xl:grid-cols-[1fr_auto]">
         <div className="min-w-0">
           <h2 className="text-lg font-bold">{homework.title}</h2>
           <p className="mt-1 text-sm text-slate-600">{homework.description}</p>
-          <div className="mt-3 flex flex-wrap gap-2"><Badge>{homework.type}</Badge><Badge tone={statusTone(homework.status)}>{homework.status}</Badge></div>
+          <div className="mt-3 flex flex-wrap gap-2"><Badge tone="blue">{homework.subject}</Badge><Badge>{homework.type}</Badge><Badge tone={statusTone(homework.status)}>{homework.status}</Badge></div>
           <p className="mt-4 text-sm font-semibold">배정 {rows.length}개 · 대상 {targetCount}명 · 제출 {submittedCount}명 · 미제출 {unsubmittedCount}명</p>
           <div className="mt-4 rounded-md border border-line">
             <div className="border-b border-line bg-slate-50 px-3 py-2 text-sm font-bold">반별 요약</div>
@@ -268,19 +472,139 @@ function HomeworkCard({ homework, rows, targetCount, submittedCount, unsubmitted
                   <span>마감 {formatDue(assignment.dueAt)}</span>
                   <span>제출 {assignment.submittedCount}/{assignment.targetStudentCount}명</span>
                   <span>{progress}%</span>
-                  <Button type="button" variant="secondary" onClick={() => onOpenDetail(assignment.id)} disabled={assignment.status === "draft"}>{assignment.status === "draft" ? "게시 후 확인" : "현황 보기"}</Button>
+                  <Button type="button" variant="secondary" onClick={() => onOpenSubmissionDetail(assignment.id)} disabled={assignment.status === "draft"}>{assignment.status === "draft" ? "게시 후 확인" : "현황 보기"}</Button>
                 </div>
               );
             })}
           </div>
         </div>
         <div className="grid gap-2 sm:grid-cols-3 xl:min-w-32 xl:grid-cols-1">
-          <Button type="button" variant="secondary" onClick={() => window.alert("숙제 템플릿 상세 목업입니다.")}>상세</Button>
+          <Button type="button" variant="secondary" onClick={() => onOpenHomeworkDetail(homework.id)}>상세</Button>
           <Button href={`/teacher/assignments/new?assignmentId=${homework.id}`} variant="secondary">내용 수정</Button>
           <Button href={`/teacher/assignments/new?assignmentId=${homework.id}`} variant="secondary">다시 배정</Button>
         </div>
       </div>
     </Card>
+  );
+}
+
+function AssignmentOverviewDetail({
+  assignmentId,
+  onBack,
+  onOpenSubmissions
+}: {
+  assignmentId: string;
+  onBack: () => void;
+  onOpenSubmissions: (assignmentId: string) => void;
+}) {
+  const assignment = assignments.find((item) => item.id === assignmentId) ?? assignments[0];
+  const homework = homeworks.find((item) => item.id === assignment.homeworkId) ?? homeworks[0];
+  const classItem = classes.find((item) => item.id === assignment.classId) ?? classes[0];
+  const progress = progressPercent(assignment);
+
+  return (
+    <div className="grid gap-4">
+      <Card>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <p className="text-sm font-bold text-action">{classItem.name}</p>
+            <h2 className="mt-1 text-xl font-bold">{homework.title}</h2>
+            <p className="mt-2 text-slate-600">{homework.description}</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Badge tone="blue">{homework.subject}</Badge>
+              <Badge>{homework.type}</Badge>
+              <Badge tone={statusTone(assignment.status)}>{assignment.status === "published" ? "게시됨" : "임시저장"}</Badge>
+              <Badge tone="yellow">마감: {formatDue(assignment.dueAt)}</Badge>
+              <Badge>배정일: {assignment.assignedAt.slice(0, 10)}</Badge>
+            </div>
+          </div>
+          <div className="grid gap-2 sm:flex lg:grid">
+            <Button type="button" variant="secondary" onClick={onBack}>목록으로</Button>
+            <Button href={`/teacher/assignments/new?assignmentId=${homework.id}&assignmentTarget=${assignment.id}`} variant="secondary">배정 수정</Button>
+            <Button type="button" onClick={() => onOpenSubmissions(assignment.id)} disabled={assignment.status === "draft"}>{assignment.status === "draft" ? "게시 후 확인" : "제출 현황"}</Button>
+          </div>
+        </div>
+      </Card>
+      <div className="grid gap-3 md:grid-cols-4">
+        <Metric label="대상 학생 수" value={assignment.targetStudentCount} />
+        <Metric label="제출 완료 수" value={assignment.submittedCount} />
+        <Metric label="미제출 수" value={assignment.unsubmittedCount} />
+        <Metric label="제출률" value={progress} suffix="%" />
+      </div>
+      <Card>
+        <h3 className="text-lg font-bold">숙제 내용</h3>
+        <dl className="mt-4 grid gap-3 text-sm">
+          <DetailRow label="과목" value={homework.subject} />
+          <DetailRow label="숙제 유형" value={homework.type} />
+          <DetailRow label="공개 상태" value={homework.status === "published" ? "게시됨" : "임시저장"} />
+          <DetailRow label="배정 반" value={classItem.name} />
+          <DetailRow label="설명" value={homework.description} />
+        </dl>
+      </Card>
+    </div>
+  );
+}
+
+function HomeworkOverviewDetail({
+  homeworkId,
+  onBack,
+  onOpenAssignment
+}: {
+  homeworkId: string;
+  onBack: () => void;
+  onOpenAssignment: (assignmentId: string) => void;
+}) {
+  const homework = homeworks.find((item) => item.id === homeworkId) ?? homeworks[0];
+  const rows = assignments
+    .filter((assignment) => assignment.homeworkId === homework.id)
+    .map((assignment) => ({
+      assignment,
+      classItem: classes.find((classItem) => classItem.id === assignment.classId) ?? classes[0]
+    }));
+  const targetCount = rows.reduce((sum, row) => sum + row.assignment.targetStudentCount, 0);
+  const submittedCount = rows.reduce((sum, row) => sum + row.assignment.submittedCount, 0);
+  const unsubmittedCount = rows.reduce((sum, row) => sum + row.assignment.unsubmittedCount, 0);
+
+  return (
+    <div className="grid gap-4">
+      <Card>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <h2 className="text-xl font-bold">{homework.title}</h2>
+            <p className="mt-2 text-slate-600">{homework.description}</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Badge tone="blue">{homework.subject}</Badge>
+              <Badge>{homework.type}</Badge>
+              <Badge tone={statusTone(homework.status)}>{homework.status === "published" ? "게시됨" : "임시저장"}</Badge>
+            </div>
+          </div>
+          <div className="grid gap-2 sm:flex lg:grid">
+            <Button type="button" variant="secondary" onClick={onBack}>목록으로</Button>
+            <Button href={`/teacher/assignments/new?assignmentId=${homework.id}`} variant="secondary">내용 수정</Button>
+            <Button href={`/teacher/assignments/new?assignmentId=${homework.id}`}>다시 배정</Button>
+          </div>
+        </div>
+      </Card>
+      <div className="grid gap-3 md:grid-cols-4">
+        <Metric label="배정 반 수" value={rows.length} />
+        <Metric label="전체 대상" value={targetCount} />
+        <Metric label="전체 제출" value={submittedCount} />
+        <Metric label="전체 미제출" value={unsubmittedCount} />
+      </div>
+      <Card>
+        <h3 className="text-lg font-bold">반별 배정</h3>
+        <div className="mt-4 grid gap-2">
+          {rows.map(({ assignment, classItem }) => (
+            <div key={assignment.id} className="grid gap-2 rounded-md border border-line p-3 text-sm lg:grid-cols-[1fr_180px_130px_auto] lg:items-center">
+              <p className="font-semibold">{classItem.name}</p>
+              <p>마감 {formatDue(assignment.dueAt)}</p>
+              <p>제출 {assignment.submittedCount}/{assignment.targetStudentCount}명</p>
+              <Button type="button" variant="secondary" onClick={() => onOpenAssignment(assignment.id)}>배정 상세</Button>
+            </div>
+          ))}
+        </div>
+      </Card>
+    </div>
   );
 }
 
@@ -322,6 +646,7 @@ function AssignmentSubmissionDetail({ assignmentId, onBack }: { assignmentId: st
             <p className="mt-2 text-slate-600">{homework.description}</p>
             <div className="mt-3 flex flex-wrap gap-2">
               <Badge tone="blue">반: {classItem.name}</Badge>
+              <Badge tone="blue">{homework.subject}</Badge>
               <Badge>{homework.type}</Badge>
               <Badge tone={statusTone(assignment.status)}>{assignment.status === "published" ? "게시됨" : "임시저장"}</Badge>
               <Badge>생성일: {assignment.assignedAt.slice(0, 10)}</Badge>
@@ -330,8 +655,8 @@ function AssignmentSubmissionDetail({ assignmentId, onBack }: { assignmentId: st
           </div>
           <div className="grid gap-2 sm:flex lg:grid">
             <Button type="button" variant="secondary" onClick={onBack}>반 목록으로</Button>
-            <Button type="button" variant="secondary" onClick={() => window.alert("숙제 내용 수정 목업입니다.")}>숙제 수정하기</Button>
-            <Button type="button" variant="secondary" onClick={() => window.alert("이 반 배정 수정 목업입니다.")}>배정 수정하기</Button>
+            <Button href={`/teacher/assignments/new?assignmentId=${homework.id}`} variant="secondary">숙제 수정하기</Button>
+            <Button href={`/teacher/assignments/new?assignmentId=${homework.id}&assignmentTarget=${assignment.id}`} variant="secondary">배정 수정하기</Button>
           </div>
         </div>
       </Card>
@@ -368,14 +693,18 @@ function AssignmentSubmissionDetail({ assignmentId, onBack }: { assignmentId: st
   );
 }
 
-function Metric({ label, value }: { label: string; value: number }) {
-  return <Card><p className="text-sm text-slate-500">{label}</p><p className="mt-2 text-2xl font-bold">{value}명</p></Card>;
+function Metric({ label, value, suffix = "명" }: { label: string; value: number; suffix?: string }) {
+  return <Card><p className="text-sm text-slate-500">{label}</p><p className="mt-2 text-2xl font-bold">{value}{suffix}</p></Card>;
+}
+
+function DetailRow({ label, value }: { label: string; value: string }) {
+  return <div className="grid gap-1 md:grid-cols-[120px_1fr]"><dt className="font-bold text-slate-500">{label}</dt><dd>{value}</dd></div>;
 }
 
 function SubmissionAction({ row }: { row: Submission }) {
-  if (row.status === "not_submitted") return <Button type="button" variant="secondary" onClick={() => window.alert("알림 표시")}>알림 표시</Button>;
-  if (row.feedbackStatus === "done") return <Button type="button" variant="secondary" onClick={() => window.alert("피드백 보기")}>피드백 보기</Button>;
-  return <Button type="button" onClick={() => window.alert("피드백 작성")}>피드백 작성</Button>;
+  if (row.status === "not_submitted") return <Button type="button" variant="secondary" disabled>미제출</Button>;
+  if (row.feedbackStatus === "done") return <Button type="button" variant="secondary" disabled>피드백 완료</Button>;
+  return <Button type="button" disabled>피드백 필요</Button>;
 }
 
 function SubmissionRow({ row }: { row: Submission }) {
@@ -384,7 +713,7 @@ function SubmissionRow({ row }: { row: Submission }) {
       <td className="py-3 font-semibold">{row.studentName}</td>
       <td><Badge tone={submissionTone(row.status)}>{submissionLabel(row.status)}</Badge></td>
       <td>{row.submittedAt ? formatDateTime(row.submittedAt) : "-"}</td>
-      <td>{row.hasAudio ? <Button type="button" variant="secondary" onClick={() => window.alert("오디오 재생")}>오디오 재생</Button> : "-"}</td>
+      <td>{row.hasAudio ? <audio className="h-9 w-44" controls src="/mock-audio/native-sample.m4a" /> : "-"}</td>
       <td><Badge tone={feedbackTone(row.feedbackStatus)}>{feedbackLabel(row.feedbackStatus)}</Badge></td>
       <td><SubmissionAction row={row} /></td>
     </tr>
@@ -397,7 +726,7 @@ function SubmissionMobileCard({ row }: { row: Submission }) {
       <div className="flex items-start justify-between gap-3"><p className="font-bold">{row.studentName}</p><Badge tone={submissionTone(row.status)}>{submissionLabel(row.status)}</Badge></div>
       <p className="mt-2 text-sm text-slate-500">제출 시간: {row.submittedAt ? formatDateTime(row.submittedAt) : "-"}</p>
       <div className="mt-3 flex flex-wrap gap-2">
-        {row.hasAudio && <Button type="button" variant="secondary" onClick={() => window.alert("오디오 재생")}>오디오 재생</Button>}
+        {row.hasAudio && <audio className="h-9 w-full" controls src="/mock-audio/native-sample.m4a" />}
         <Badge tone={feedbackTone(row.feedbackStatus)}>{feedbackLabel(row.feedbackStatus)}</Badge>
         <SubmissionAction row={row} />
       </div>

@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Textarea } from "@/components/ui/Textarea";
+import { classCalendarRepository } from "@/features/class-calendar/repositories/classCalendarRepository";
 import type { ClassHomeworkType } from "@/features/class-calendar/types/classCalendar";
 import { mockRepository } from "@/mocks/mockRepository";
 
@@ -39,8 +40,8 @@ const templateOptions = [
 ];
 
 const assignmentClasses = [
-  { id: "mon-wed-basic", name: "월수 Basic Speaking", studentCount: 8, students: ["김민준", "이서연", "박지훈", "한아린", "유재영", "서도윤", "강지우", "문하린"] },
-  { id: "tue-thu-basic", name: "화목 Basic Speaking", studentCount: 6, students: ["최유진", "정하윤", "오지후", "백서준", "윤채원", "남도현"] },
+  { id: "class-a", name: "월수 Basic Speaking", studentCount: 8, students: ["이지우", "박서준", "최하윤", "한아린", "유재영", "서도윤", "강지우", "문하린"] },
+  { id: "class-b", name: "화목 Reading Plus", studentCount: 6, students: ["최하윤", "정도윤", "한아린", "백서준", "윤채원", "남도현"] },
   { id: "reading-a", name: "초등 Reading A", studentCount: 10, students: ["김나은", "이지아", "박현우", "최서율", "정민서", "오하준", "송예린", "문지호", "강윤서", "한시우"] },
   { id: "reading-b", name: "초등 Reading B", studentCount: 9, students: ["유하늘", "서지민", "홍태오", "권예준", "임수아", "배지안", "조은채", "신도윤", "고유빈"] },
   { id: "middle-speaking", name: "중등 Speaking", studentCount: 7, students: ["장민재", "이도겸", "박세은", "최연우", "정유나", "오준서", "김서현"] }
@@ -90,29 +91,49 @@ export default function NewAssignmentPage() {
 function NewAssignmentForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const calendarAssignmentId = searchParams.get("calendarAssignmentId");
+  const calendarClassId = searchParams.get("classId");
   const editAssignment = useMemo(() => {
     const assignmentId = searchParams.get("assignmentId");
     return assignmentId ? mockRepository.getAssignmentById(assignmentId) : undefined;
   }, [searchParams]);
+  const calendarEditAssignment = useMemo(() => {
+    return calendarAssignmentId ? classCalendarRepository.getAssignmentById(calendarAssignmentId) : undefined;
+  }, [calendarAssignmentId]);
   const editItem = editAssignment?.items[0];
+  const isEditMode = Boolean(editAssignment || calendarEditAssignment);
   const [selectedTemplateId, setSelectedTemplateId] = useState(templateOptions[0].id);
   const [message, setMessage] = useState("");
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
-  const [defaultDueDate, setDefaultDueDate] = useState(editAssignment?.dueAt?.slice(0, 10) ?? "2026-05-25");
-  const [defaultDueTime, setDefaultDueTime] = useState(editAssignment?.dueAt?.match(/T(\d{2}:\d{2})/)?.[1] ?? "23:59");
-  const [visibility, setVisibility] = useState<VisibilityStatus>(editAssignment?.status === "draft" ? "draft" : "published");
+  const [defaultDueDate, setDefaultDueDate] = useState(editAssignment?.dueAt?.slice(0, 10) ?? calendarEditAssignment?.dueAt?.slice(0, 10) ?? "2026-05-25");
+  const [defaultDueTime, setDefaultDueTime] = useState(editAssignment?.dueAt?.match(/T(\d{2}:\d{2})/)?.[1] ?? calendarEditAssignment?.dueAt?.match(/T(\d{2}:\d{2})/)?.[1] ?? "23:59");
+  const [visibility, setVisibility] = useState<VisibilityStatus>(editAssignment?.status === "draft" || calendarEditAssignment?.status === "draft" ? "draft" : "published");
   const [template, setTemplate] = useState<TemplateState>({
-    title: editAssignment?.title ?? "Discovery Unit 1 Speaking Homework",
-    type: (editAssignment?.assignmentType as ClassHomeworkType | undefined) ?? "listening_recording",
-    description: editAssignment?.description ?? "원어민 음성을 듣고 같은 속도로 읽어 보세요.",
+    title: editAssignment?.title ?? calendarEditAssignment?.title ?? "Discovery Unit 1 Speaking Homework",
+    type: (editAssignment?.assignmentType as ClassHomeworkType | undefined) ?? calendarEditAssignment?.type ?? "listening_recording",
+    description: editAssignment?.description ?? calendarEditAssignment?.description ?? "원어민 음성을 듣고 같은 속도로 읽어 보세요.",
     passageTitle: editItem?.title ?? "A Day at the Museum",
-    passageText: editItem?.passageText ?? "I went to the museum with my family. We saw old paintings, shiny stones, and a big dinosaur. My favorite part was the space room.",
+    passageText: editItem?.passageText ?? calendarEditAssignment?.passageText ?? "I went to the museum with my family. We saw old paintings, shiny stones, and a big dinosaur. My favorite part was the space room.",
     minRecordingSec: String(editItem?.minRecordingSec ?? 3),
     maxRecordingSec: String(editItem?.maxRecordingSec ?? 120),
-    audioFileName: editItem?.audioFileName ?? "",
-    imageUrl: DEFAULT_HOMEWORK_IMAGE_URL
+    audioFileName: editItem?.audioFileName ?? calendarEditAssignment?.audioFileName ?? "",
+    imageUrl: calendarEditAssignment?.imageUrl ?? DEFAULT_HOMEWORK_IMAGE_URL
   });
-  const [classAssignments, setClassAssignments] = useState<Record<string, ClassAssignment>>({});
+  const [classAssignments, setClassAssignments] = useState<Record<string, ClassAssignment>>(() => {
+    if (!calendarEditAssignment || !calendarClassId) return {};
+    const dueAt = calendarEditAssignment.dueAt ?? "2026-05-25T23:59:00";
+    return {
+      [calendarClassId]: {
+        classId: calendarClassId,
+        dueDate: dueAt.slice(0, 10),
+        dueTime: dueAt.match(/T(\d{2}:\d{2})/)?.[1] ?? "23:59",
+        visibility: calendarEditAssignment.status === "draft" ? "draft" : "published",
+        targetMode: "all",
+        selectedStudents: [],
+        studentSearch: ""
+      }
+    };
+  });
 
   const selectedAssignments = Object.values(classAssignments);
   const summaryRows = selectedAssignments.map((assignment) => {
@@ -214,13 +235,17 @@ function NewAssignmentForm() {
       setMessage("배정할 반을 1개 이상 선택해주세요.");
       return;
     }
-    setMessage(status === "draft" ? "임시저장 목업이 완료되었습니다." : "숙제 배정 목업이 완료되었습니다.");
+    setMessage(status === "draft" ? "임시저장되었습니다." : "숙제가 배정되었습니다.");
     setIsConfirmOpen(false);
+    if (calendarEditAssignment && calendarClassId) {
+      router.push("/teacher/classes");
+      return;
+    }
     if (editAssignment) router.push(`/teacher/assignments/${editAssignment.id}`);
   }
 
   return (
-    <TeacherLayout title="숙제 생성">
+    <TeacherLayout title={isEditMode ? "숙제 수정" : "숙제 생성"}>
       <div className="grid gap-5">
         {message && <p className="rounded-md bg-blue-50 px-3 py-2 text-sm font-semibold text-action">{message}</p>}
 
@@ -256,7 +281,7 @@ function NewAssignmentForm() {
               </div>
             </div>
             <label className="grid gap-2 text-sm font-semibold">지문 내용<Textarea value={template.passageText} onChange={(event) => setTemplate({ ...template, passageText: event.target.value })} /></label>
-            <div className="flex justify-end"><Button type="button" variant="secondary" onClick={() => setMessage("템플릿 저장 목업이 완료되었습니다.")}>템플릿으로 저장</Button></div>
+            <div className="flex justify-end"><Button type="button" variant="secondary" onClick={() => setMessage("템플릿으로 저장되었습니다.")}>템플릿으로 저장</Button></div>
           </div>
         </Card>
 
@@ -354,7 +379,7 @@ function NewAssignmentForm() {
             </div>
           </div>
           <div className="mt-5 grid gap-2 sm:flex sm:justify-end">
-            <Button href={editAssignment ? `/teacher/assignments/${editAssignment.id}` : "/teacher/assignments"} variant="secondary">취소</Button>
+            <Button href={calendarEditAssignment && calendarClassId ? "/teacher/classes" : editAssignment ? `/teacher/assignments/${editAssignment.id}` : "/teacher/assignments"} variant="secondary">취소</Button>
             <Button type="button" variant="secondary" onClick={() => saveMock("draft")}>임시저장</Button>
             <Button type="button" onClick={() => setIsConfirmOpen(true)}>숙제 배정하기</Button>
           </div>

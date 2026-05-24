@@ -344,7 +344,7 @@ function HomeworkStatusTab({
                     <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-action" style={{ width: `${progress}%` }} /></div>
                   </td>
                   <td><p>피드백 필요 {feedbackNeeded}명</p><p className="mt-1 text-slate-500">피드백 완료 {feedbackDone}명</p></td>
-                  <td><Button href={`/teacher/classes/${classId}/assignments/${assignment.id}`} variant="secondary">제출 관리</Button></td>
+                  <td><Button href={`/teacher/assignments?calendarAssignmentId=${assignment.id}`} variant="secondary">숙제 관리로</Button></td>
                 </tr>
               );
             })}
