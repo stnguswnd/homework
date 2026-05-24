@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useEffect, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { TeacherLayout } from "@/components/layout/TeacherLayout";
 import { Button } from "@/components/ui/Button";
@@ -9,9 +9,8 @@ import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Textarea } from "@/components/ui/Textarea";
 import type { ClassHomeworkType } from "@/features/class-calendar/types/classCalendar";
-import { mockRepository } from "@/mocks/mockRepository";
 
-const DEFAULT_HOMEWORK_IMAGE_URL = "/mock-images/alphabet-cards.svg";
+const DEFAULT_HOMEWORK_IMAGE_URL = "";
 
 const templateOptions = [
   {
@@ -45,6 +44,9 @@ const assignmentClasses = [
   { id: "reading-b", name: "초등 Reading B", studentCount: 9, students: ["유하늘", "서지민", "홍태오", "권예준", "임수아", "배지안", "조은채", "신도윤", "고유빈"] },
   { id: "middle-speaking", name: "중등 Speaking", studentCount: 7, students: ["장민재", "이도겸", "박세은", "최연우", "정유나", "오준서", "김서현"] }
 ];
+
+type ApiAssignmentClass = { id: string; name: string; studentCount: number; students: Array<{ id: string; name: string }> };
+type ApiAssignmentOption = { id: string; name: string };
 
 type TemplateState = {
   title: string;
@@ -90,28 +92,29 @@ export default function NewAssignmentPage() {
 function NewAssignmentForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const routeAssignmentId = searchParams.get("assignmentId");
   const routeClassId = searchParams.get("classId");
-  const editAssignment = useMemo(() => {
-    const assignmentId = searchParams.get("assignmentId");
-    return assignmentId ? mockRepository.getAssignmentById(assignmentId) : undefined;
-  }, [searchParams]);
-  const editItem = editAssignment?.items[0];
-  const isEditMode = Boolean(editAssignment);
-  const [selectedTemplateId, setSelectedTemplateId] = useState(templateOptions[0].id);
+  const isEditMode = Boolean(routeAssignmentId);
+  const [assignmentOptions, setAssignmentOptions] = useState<ApiAssignmentOption[]>([]);
+  const [assignmentClassRows, setAssignmentClassRows] = useState<ApiAssignmentClass[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [message, setMessage] = useState("");
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [audioFile, setAudioFile] = useState<File | null>(null);
+  const [isSavingTemplate, startSavingTemplate] = useTransition();
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
-  const [defaultDueDate, setDefaultDueDate] = useState(editAssignment?.dueAt?.slice(0, 10) ?? "2026-05-25");
-  const [defaultDueTime, setDefaultDueTime] = useState(editAssignment?.dueAt?.match(/T(\d{2}:\d{2})/)?.[1] ?? "23:59");
-  const [visibility, setVisibility] = useState<VisibilityStatus>(editAssignment?.status === "draft" ? "draft" : "published");
+  const [defaultDueDate, setDefaultDueDate] = useState("2026-05-25");
+  const [defaultDueTime, setDefaultDueTime] = useState("23:59");
+  const [visibility, setVisibility] = useState<VisibilityStatus>("published");
   const [template, setTemplate] = useState<TemplateState>({
-    title: editAssignment?.title ?? "Discovery Unit 1 Speaking Homework",
-    type: (editAssignment?.assignmentType as ClassHomeworkType | undefined) ?? "listening_recording",
-    description: editAssignment?.description ?? "원어민 음성을 듣고 같은 속도로 읽어 보세요.",
-    passageTitle: editItem?.title ?? "A Day at the Museum",
-    passageText: editItem?.passageText ?? "I went to the museum with my family. We saw old paintings, shiny stones, and a big dinosaur. My favorite part was the space room.",
-    minRecordingSec: String(editItem?.minRecordingSec ?? 3),
-    maxRecordingSec: String(editItem?.maxRecordingSec ?? 120),
-    audioFileName: editItem?.audioFileName ?? "",
+    title: "Discovery Unit 1 Speaking Homework",
+    type: "listening_recording",
+    description: "원어민 음성을 듣고 같은 속도로 읽어 보세요.",
+    passageTitle: "A Day at the Museum",
+    passageText: "I went to the museum with my family. We saw old paintings, shiny stones, and a big dinosaur. My favorite part was the space room.",
+    minRecordingSec: "3",
+    maxRecordingSec: "120",
+    audioFileName: "",
     imageUrl: DEFAULT_HOMEWORK_IMAGE_URL
   });
   const [classAssignments, setClassAssignments] = useState<Record<string, ClassAssignment>>(() => {
@@ -131,13 +134,67 @@ function NewAssignmentForm() {
 
   const selectedAssignments = Object.values(classAssignments);
   const summaryRows = selectedAssignments.map((assignment) => {
-    const classItem = assignmentClasses.find((item) => item.id === assignment.classId);
+    const sourceClasses = assignmentClassRows.length > 0 ? assignmentClassRows : assignmentClasses.map((item) => ({
+      ...item,
+      students: item.students.map((name, index) => ({ id: `${item.id}-${index}`, name })),
+    }));
+    const classItem = sourceClasses.find((item) => item.id === assignment.classId);
     const studentCount = assignment.targetMode === "all" ? classItem?.studentCount ?? 0 : assignment.selectedStudents.length;
     return { assignment, classItem, studentCount };
   });
   const totalStudents = summaryRows.reduce((sum, row) => sum + row.studentCount, 0);
+  const currentAssignmentId = routeAssignmentId ?? selectedTemplateId;
+
+  useEffect(() => {
+    fetch("/api/teacher/classes", { cache: "no-store" })
+      .then((response) => response.json())
+      .then((data: ApiAssignmentClass[]) => setAssignmentClassRows(data.filter((item) => item.studentCount >= 0)))
+      .catch(() => setAssignmentClassRows([]));
+
+    fetch("/api/teacher/assignments", { cache: "no-store" })
+      .then((response) => response.json())
+      .then((data) => {
+        const options = (data.assignments ?? []).map((item: { id: string; title: string }) => ({ id: item.id, name: item.title }));
+        setAssignmentOptions(options);
+        setSelectedTemplateId((current) => current || options[0]?.id || "");
+      })
+      .catch(() => setAssignmentOptions([]));
+  }, []);
+
+  useEffect(() => {
+    if (!routeAssignmentId) return;
+    const assignmentId = routeAssignmentId;
+    let ignore = false;
+
+    async function loadSavedTemplate() {
+      const response = await fetch(`/api/teacher/assignments?id=${encodeURIComponent(assignmentId)}`, { cache: "no-store" });
+      const data = await response.json();
+      if (ignore || !data.assignment) return;
+      setTemplate((current) => ({
+        ...current,
+        title: data.assignment.title,
+        type: data.assignment.type,
+        description: data.assignment.description,
+        passageTitle: data.assignment.item.title,
+        passageText: data.assignment.item.passageText,
+        minRecordingSec: data.assignment.item.minRecordingSec,
+        maxRecordingSec: data.assignment.item.maxRecordingSec,
+        audioFileName: data.assignment.item.audioFileName,
+        imageUrl: data.assignment.imageUrl || current.imageUrl
+      }));
+    }
+
+    loadSavedTemplate().catch(() => undefined);
+    return () => {
+      ignore = true;
+    };
+  }, [routeAssignmentId]);
 
   function loadTemplate() {
+    if (selectedTemplateId) {
+      window.location.href = `/teacher/assignments/new?assignmentId=${encodeURIComponent(selectedTemplateId)}`;
+      return;
+    }
     const nextTemplate = templateOptions.find((item) => item.id === selectedTemplateId);
     if (!nextTemplate) return;
     setTemplate((current) => ({
@@ -150,14 +207,16 @@ function NewAssignmentForm() {
       minRecordingSec: nextTemplate.minRecordingSec,
       maxRecordingSec: nextTemplate.maxRecordingSec
     }));
-    setMessage("템플릿을 불러왔습니다.");
+    setMessage("과제 원본을 불러왔습니다.");
   }
 
   function previewImage(file?: File) {
     if (!file) {
+      setImageFile(null);
       setTemplate((current) => ({ ...current, imageUrl: DEFAULT_HOMEWORK_IMAGE_URL }));
       return;
     }
+    setImageFile(file);
     const reader = new FileReader();
     reader.onload = () => {
       if (typeof reader.result === "string") setTemplate((current) => ({ ...current, imageUrl: reader.result as string }));
@@ -166,7 +225,71 @@ function NewAssignmentForm() {
   }
 
   function onAudioChange(file?: File) {
+    setAudioFile(file ?? null);
     setTemplate((current) => ({ ...current, audioFileName: file?.name ?? "" }));
+  }
+
+  function saveAssignment() {
+    if (!template.title.trim()) {
+      setMessage("숙제 제목을 입력해 주세요.");
+      return;
+    }
+
+    startSavingTemplate(async () => {
+      const formData = new FormData();
+      formData.set("id", currentAssignmentId);
+      formData.set("title", template.title);
+      formData.set("type", template.type);
+      formData.set("description", template.description);
+      formData.set("passageTitle", template.passageTitle);
+      formData.set("passageText", template.passageText);
+      formData.set("minRecordingSec", template.minRecordingSec);
+      formData.set("maxRecordingSec", template.maxRecordingSec);
+      formData.set("audioFileName", template.audioFileName);
+      formData.set("imageUrl", template.imageUrl);
+      if (imageFile) formData.set("imageFile", imageFile, imageFile.name);
+      if (audioFile) formData.set("audioFile", audioFile, audioFile.name);
+
+      const response = await fetch("/api/teacher/assignments", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        setMessage(data.error ?? "과제 저장 중 오류가 발생했습니다.");
+        return;
+      }
+
+      setImageFile(null);
+      setAudioFile(null);
+      setTemplate((current) => ({
+        ...current,
+        imageUrl: data.assignment?.imageUrl || current.imageUrl,
+        audioFileName: data.assignment?.item?.audioFileName || current.audioFileName,
+      }));
+      setMessage("과제가 저장되었습니다.");
+    });
+  }
+
+  function buildAssignmentFormData(includeTargets: boolean) {
+    const formData = new FormData();
+    formData.set("id", currentAssignmentId);
+    formData.set("title", template.title);
+    formData.set("type", template.type);
+    formData.set("description", template.description);
+    formData.set("passageTitle", template.passageTitle);
+    formData.set("passageText", template.passageText);
+    formData.set("minRecordingSec", template.minRecordingSec);
+    formData.set("maxRecordingSec", template.maxRecordingSec);
+    formData.set("audioFileName", template.audioFileName);
+    formData.set("imageUrl", template.imageUrl);
+    if (imageFile) formData.set("imageFile", imageFile, imageFile.name);
+    if (audioFile) formData.set("audioFile", audioFile, audioFile.name);
+    if (includeTargets) {
+      formData.set("assignments", JSON.stringify(selectedAssignments));
+    }
+    return formData;
   }
 
   function toggleClass(classId: string) {
@@ -225,13 +348,34 @@ function NewAssignmentForm() {
       setMessage("숙제 제목을 입력해주세요.");
       return;
     }
-    if (selectedAssignments.length === 0) {
+    const shouldAssign = status === "published";
+    if (shouldAssign && selectedAssignments.length === 0) {
       setMessage("배정할 반을 1개 이상 선택해주세요.");
       return;
     }
-    setMessage(status === "draft" ? "임시저장되었습니다." : "숙제가 배정되었습니다.");
-    setIsConfirmOpen(false);
-    if (editAssignment) router.push("/teacher/assignments");
+    startSavingTemplate(async () => {
+      const response = await fetch("/api/teacher/assignments", {
+        method: "POST",
+        body: buildAssignmentFormData(shouldAssign),
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        setMessage(data.error ?? "과제 배정 중 오류가 발생했습니다.");
+        return;
+      }
+
+      setImageFile(null);
+      setAudioFile(null);
+      setIsConfirmOpen(false);
+      setTemplate((current) => ({
+        ...current,
+        imageUrl: data.assignment?.imageUrl || current.imageUrl,
+        audioFileName: data.assignment?.item?.audioFileName || current.audioFileName,
+      }));
+      setMessage(status === "draft" ? "과제가 저장되었습니다." : `과제가 ${data.assignedCount ?? 0}명에게 배정되었습니다.`);
+      if (shouldAssign) router.push("/teacher/assignments");
+    });
   }
 
   return (
@@ -241,14 +385,14 @@ function NewAssignmentForm() {
 
         <Card>
           <div className="mb-5">
-            <h2 className="text-xl font-bold">숙제 템플릿</h2>
+            <h2 className="text-xl font-bold">과제 원본</h2>
             <p className="mt-1 text-sm text-slate-500">나중에 여러 번 재사용할 숙제 내용을 만드는 영역입니다.</p>
           </div>
           <div className="grid gap-5">
             <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto]">
-              <label className="grid gap-2 text-sm font-semibold">기존 템플릿 선택<Select value={selectedTemplateId} onChange={(event) => setSelectedTemplateId(event.target.value)}>{templateOptions.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select></label>
+              <label className="grid gap-2 text-sm font-semibold">기존 과제 선택<Select value={selectedTemplateId} onChange={(event) => setSelectedTemplateId(event.target.value)}>{(assignmentOptions.length > 0 ? assignmentOptions : templateOptions).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select></label>
               <Button type="button" className="self-end" variant="secondary" onClick={loadTemplate}>불러오기</Button>
-              <Button type="button" className="self-end" variant="secondary" onClick={() => setMessage("새 템플릿 작성 상태입니다.")}>새 템플릿</Button>
+              <Button type="button" className="self-end" variant="secondary" onClick={() => setMessage("새 과제 작성 상태입니다.")}>새 과제</Button>
             </div>
             <div className="grid gap-4 md:grid-cols-2">
               <label className="grid gap-2 text-sm font-semibold">숙제 제목<Input value={template.title} onChange={(event) => setTemplate({ ...template, title: event.target.value })} /></label>
@@ -261,7 +405,7 @@ function NewAssignmentForm() {
             <label className="grid gap-2 text-sm font-semibold">설명<Textarea value={template.description} onChange={(event) => setTemplate({ ...template, description: event.target.value })} /></label>
             <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
               <label className="grid gap-2 text-sm font-semibold">숙제 이미지 업로드<Input type="file" accept="image/*" onChange={(event) => previewImage(event.target.files?.[0])} /></label>
-              <div className="grid gap-2 text-sm font-semibold">이미지 미리보기<div className="overflow-hidden rounded-md border border-line bg-slate-50"><img src={template.imageUrl} alt="숙제 이미지 미리보기" className="h-44 w-full object-contain" /></div></div>
+              <div className="grid gap-2 text-sm font-semibold">이미지 미리보기<div className="grid h-44 place-items-center overflow-hidden rounded-md border border-line bg-slate-50">{template.imageUrl ? <img src={template.imageUrl} alt="숙제 이미지 미리보기" className="h-full w-full object-contain" /> : <span className="text-sm font-medium text-slate-400">선택된 이미지 없음</span>}</div></div>
             </div>
             <div className="grid gap-4 md:grid-cols-2">
               <label className="grid gap-2 text-sm font-semibold">지문 제목<Input value={template.passageTitle} onChange={(event) => setTemplate({ ...template, passageTitle: event.target.value })} /></label>
@@ -271,7 +415,7 @@ function NewAssignmentForm() {
               </div>
             </div>
             <label className="grid gap-2 text-sm font-semibold">지문 내용<Textarea value={template.passageText} onChange={(event) => setTemplate({ ...template, passageText: event.target.value })} /></label>
-            <div className="flex justify-end"><Button type="button" variant="secondary" onClick={() => setMessage("템플릿으로 저장되었습니다.")}>템플릿으로 저장</Button></div>
+            <div className="flex justify-end"><Button type="button" variant="secondary" onClick={saveAssignment} disabled={isSavingTemplate}>{isSavingTemplate ? "저장 중..." : "과제 저장"}</Button></div>
           </div>
         </Card>
 
@@ -295,9 +439,12 @@ function NewAssignmentForm() {
               <div>
                 <h3 className="mb-3 font-bold">대상 반 선택</h3>
                 <div className="grid gap-3">
-                  {assignmentClasses.map((classItem) => {
+                  {(assignmentClassRows.length > 0 ? assignmentClassRows : assignmentClasses.map((item) => ({
+                    ...item,
+                    students: item.students.map((name, index) => ({ id: `${item.id}-${index}`, name })),
+                  }))).map((classItem) => {
                     const selected = classAssignments[classItem.id];
-                    const filteredStudents = classItem.students.filter((student) => student.includes(selected?.studentSearch ?? ""));
+                    const filteredStudents = classItem.students.filter((student) => student.name.includes(selected?.studentSearch ?? ""));
                     return (
                       <div key={classItem.id} className="rounded-md border border-line bg-white p-4">
                         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -330,9 +477,9 @@ function NewAssignmentForm() {
                                 <label className="grid gap-2 text-sm font-semibold">학생 검색<Input value={selected.studentSearch} onChange={(event) => updateClassAssignment(classItem.id, { studentSearch: event.target.value })} placeholder="학생 이름 검색" /></label>
                                 <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                                   {filteredStudents.map((student) => (
-                                    <label key={student} className="flex items-center gap-2 rounded-md border border-line bg-white p-2 text-sm font-semibold">
-                                      <input type="checkbox" checked={selected.selectedStudents.includes(student)} onChange={() => toggleStudent(classItem.id, student)} />
-                                      {student}
+                                    <label key={student.id} className="flex items-center gap-2 rounded-md border border-line bg-white p-2 text-sm font-semibold">
+                                      <input type="checkbox" checked={selected.selectedStudents.includes(student.id)} onChange={() => toggleStudent(classItem.id, student.id)} />
+                                      {student.name}
                                     </label>
                                   ))}
                                 </div>
@@ -370,8 +517,8 @@ function NewAssignmentForm() {
           </div>
           <div className="mt-5 grid gap-2 sm:flex sm:justify-end">
             <Button href="/teacher/assignments" variant="secondary">취소</Button>
-            <Button type="button" variant="secondary" onClick={() => saveMock("draft")}>임시저장</Button>
-            <Button type="button" onClick={() => setIsConfirmOpen(true)}>숙제 배정하기</Button>
+            <Button type="button" variant="secondary" onClick={() => saveMock("draft")} disabled={isSavingTemplate}>임시저장</Button>
+            <Button type="button" onClick={() => setIsConfirmOpen(true)} disabled={isSavingTemplate}>숙제 배정하기</Button>
           </div>
         </Card>
       </div>
@@ -401,7 +548,7 @@ function NewAssignmentForm() {
             </div>
             <div className="mt-5 flex justify-end gap-2">
               <Button type="button" variant="secondary" onClick={() => setIsConfirmOpen(false)}>취소</Button>
-              <Button type="button" onClick={() => saveMock("published")}>배정하기</Button>
+              <Button type="button" onClick={() => saveMock("published")} disabled={isSavingTemplate}>{isSavingTemplate ? "배정 중..." : "배정하기"}</Button>
             </div>
           </div>
         </div>

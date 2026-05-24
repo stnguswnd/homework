@@ -34,11 +34,11 @@ export const mockClasses: Class[] = [
 ];
 
 export const mockStudents: Student[] = [
-  { id: "student-1", teacherId: "teacher-1", name: "이지우", accessCode: "JIWOO24", classIds: ["class-a"], status: "active", memo: "목소리가 작음", createdAt: "2026-05-01T09:00:00.000Z" },
-  { id: "student-2", teacherId: "teacher-1", name: "박서준", accessCode: "SEOJUN7", classIds: ["class-a"], status: "active", createdAt: "2026-05-01T09:00:00.000Z" },
-  { id: "student-3", teacherId: "teacher-1", name: "최하윤", accessCode: "HAYUN9", classIds: ["class-a", "class-b"], status: "active", createdAt: "2026-05-02T09:00:00.000Z" },
-  { id: "student-4", teacherId: "teacher-1", name: "정도윤", accessCode: "DOYUN1", classIds: ["class-b"], status: "inactive", createdAt: "2026-05-03T09:00:00.000Z" },
-  { id: "student-5", teacherId: "teacher-1", name: "한아린", accessCode: "ARIN55", classIds: ["class-b"], status: "active", createdAt: "2026-05-03T09:00:00.000Z" }
+  { id: "student-1", teacherId: "teacher-1", name: "이지우", studentLoginId: "JIWOO24", accessCode: "JIWOO24", classIds: ["class-a"], status: "active", memo: "목소리가 작음", createdAt: "2026-05-01T09:00:00.000Z" },
+  { id: "student-2", teacherId: "teacher-1", name: "박서준", studentLoginId: "SEOJUN7", accessCode: "SEOJUN7", classIds: ["class-a"], status: "active", createdAt: "2026-05-01T09:00:00.000Z" },
+  { id: "student-3", teacherId: "teacher-1", name: "최하윤", studentLoginId: "HAYUN9", accessCode: "HAYUN9", classIds: ["class-a", "class-b"], status: "active", createdAt: "2026-05-02T09:00:00.000Z" },
+  { id: "student-4", teacherId: "teacher-1", name: "정도윤", studentLoginId: "DOYUN1", accessCode: "DOYUN1", classIds: ["class-b"], status: "inactive", createdAt: "2026-05-03T09:00:00.000Z" },
+  { id: "student-5", teacherId: "teacher-1", name: "한아린", studentLoginId: "ARIN55", accessCode: "ARIN55", classIds: ["class-b"], status: "active", createdAt: "2026-05-03T09:00:00.000Z" }
 ];
 
 export const mockAssignments: Assignment[] = [

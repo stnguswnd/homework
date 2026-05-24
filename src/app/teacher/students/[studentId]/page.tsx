@@ -79,14 +79,14 @@ export default async function StudentLearningHistoryPage({
         <Card>
           <div className="flex flex-col gap-1">
             <h3 className="text-lg font-bold">학습 이력</h3>
-            <p className="text-sm text-slate-500">기존 학생 관리 탭보다 넓게 볼 수 있도록 전용 페이지로 구성했습니다.</p>
+            <p className="text-sm text-slate-500">학생별 과제 제출 상태와 피드백 현황을 확인합니다.</p>
           </div>
           <div className="mt-4 grid gap-3">
             {history.length === 0 ? (
               <p className="rounded-md border border-dashed border-line p-6 text-center text-sm text-slate-500">아직 학습 이력이 없습니다.</p>
             ) : (
               history.map((item) => (
-                <div key={item.id} className="grid gap-3 rounded-md border border-line p-4 lg:grid-cols-[120px_1fr_150px_130px_110px_120px] lg:items-center">
+                <div key={item.id} className="grid gap-3 rounded-md border border-line p-4 lg:grid-cols-[120px_1fr_170px_140px_120px_140px] lg:items-center">
                   <p className="text-sm font-bold text-slate-500">{item.date}</p>
                   <div className="min-w-0">
                     <p className="truncate font-bold">{item.assignmentTitle}</p>

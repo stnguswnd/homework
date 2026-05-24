@@ -1,198 +1,302 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 import { TeacherLayout } from "@/components/layout/TeacherLayout";
+import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { mockRepository } from "@/mocks/mockRepository";
-import type { Assignment } from "@/types/assignment";
+import { Card } from "@/components/ui/Card";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+import { Textarea } from "@/components/ui/Textarea";
 
-type Subject = "Phonics" | "AL" | "AR";
-type SubjectFilter = "전체" | Subject;
-
-type StudentHomework = {
-  subject: Subject;
+type HomeworkItem = {
+  assignmentId: string;
   title: string;
+  subject: string;
+  submissionId?: string;
 };
 
-type TeamStudent = {
-  id: string;
-  name: string;
-  href: string;
-  reviewRequested: StudentHomework[];
-  incomplete: StudentHomework[];
+type ClassOverview = {
+  class_id: string;
+  class_name: string;
+  student_count: number;
+  assigned_count: number;
+  submitted_count: number;
+  missing_count: number;
+  needs_review_count: number;
+  subjects: string[];
+  students: Array<{
+    studentId: string;
+    studentName: string;
+    reviewItems: HomeworkItem[];
+    missingItems: HomeworkItem[];
+  }>;
 };
 
-type Team = {
-  id: string;
-  name: string;
-  subjects: Subject[];
-  students: TeamStudent[];
-};
+const subjectOrder = ["전체", "Phonics", "AL", "AR"];
 
-function assignmentSubject(assignment: Assignment): Subject {
-  if (assignment.id === "assignment-1") return "AL";
-  if (assignment.id === "assignment-2") return "AR";
-  return "Phonics";
-}
+export default function ClassesPage() {
+  const [classes, setClasses] = useState<ClassOverview[]>([]);
+  const [selectedSubjects, setSelectedSubjects] = useState<Record<string, string>>({});
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
 
-function buildTeams(): Team[] {
-  return mockRepository.getClasses().map((classItem) => {
-    const students = mockRepository.getStudentsByClassId(classItem.id);
-    const assignments = mockRepository.getAssignmentsByClassId(classItem.id);
-    return {
-      id: classItem.id,
-      name: classItem.name,
-      subjects: ["Phonics", "AL", "AR"],
-      students: students.map((student) => {
-        const reviewRequested: StudentHomework[] = [];
-        const incomplete: StudentHomework[] = [];
-        for (const assignment of assignments) {
-          const submission = mockRepository
-            .getSubmissionsByAssignmentId(assignment.id)
-            .find((item) => item.studentId === student.id);
-          const homework = {
-            subject: assignmentSubject(assignment),
-            title: assignment.title
-          };
-          if (!submission || submission.status === "not_submitted") {
-            incomplete.push(homework);
-          } else if (submission.status === "submitted") {
-            reviewRequested.push(homework);
-          }
-        }
-        return {
-          id: student.id,
-          name: student.name,
-          href: `/teacher/students/${student.id}`,
-          reviewRequested,
-          incomplete
-        };
-      })
-    };
-  });
-}
+  async function loadClasses() {
+    const response = await fetch("/api/teacher/classes/overview", { cache: "no-store" });
+    const data = await response.json();
+    setClasses(data.classes ?? []);
+  }
 
-function filterHomeworks(items: StudentHomework[], filter: SubjectFilter) {
-  if (filter === "전체") return items;
-  return items.filter((item) => item.subject === filter);
-}
+  useEffect(() => {
+    loadClasses().catch(() => setClasses([]));
+  }, []);
 
-function HomeworkPill({ homework, tone }: { homework: StudentHomework; tone: "review" | "incomplete" }) {
+  async function createClass(formData: FormData) {
+    const response = await fetch("/api/teacher/classes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: String(formData.get("name") ?? "").trim(),
+        description: String(formData.get("description") ?? "").trim(),
+        status: String(formData.get("status") ?? "active"),
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      setMessage(data.error ?? "반을 만들지 못했습니다.");
+      return;
+    }
+    setMessage("반이 생성되었습니다.");
+    setIsCreateOpen(false);
+    await loadClasses();
+  }
+
+  function selectSubject(classId: string, subject: string) {
+    setSelectedSubjects((current) => ({ ...current, [classId]: subject }));
+  }
+
   return (
-    <span
-      className={`inline-flex max-w-full items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold ${
-        tone === "review"
-          ? "border-blue-100 bg-blue-50 text-blue-700"
-          : "border-red-100 bg-red-50 text-red-700"
-      }`}
-    >
-      <span className="shrink-0 rounded-full bg-white/80 px-1.5 py-0.5 text-[11px] font-bold">{homework.subject}</span>
-      <span className="truncate">{homework.title}</span>
-    </span>
+    <TeacherLayout title="팀 관리">
+      <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div>
+          <p className="text-sm font-bold text-action">강사용 목업</p>
+          <h1 className="mt-1 text-3xl font-bold">팀 관리</h1>
+        </div>
+        <Button onClick={() => setIsCreateOpen(true)}>반 만들기</Button>
+      </div>
+
+      <div className="mb-5">
+        <h2 className="text-lg font-bold">팀별 숙제 상태</h2>
+        <p className="mt-1 text-sm text-slate-500">반을 먼저 만든 뒤 학생을 배정하고, 학생별 검토요청과 미완료 숙제를 확인합니다.</p>
+      </div>
+
+      {message && <p className="mb-4 rounded-md bg-blue-50 px-4 py-3 text-sm font-semibold text-action">{message}</p>}
+
+      <div className="grid gap-5 lg:grid-cols-2 2xl:grid-cols-3">
+        {classes.map((classItem) => (
+          <ClassStatusCard
+            key={classItem.class_id}
+            classItem={classItem}
+            selectedSubject={selectedSubjects[classItem.class_id] ?? "전체"}
+            onSelectSubject={(subject) => selectSubject(classItem.class_id, subject)}
+          />
+        ))}
+        {classes.length === 0 && (
+          <Card className="w-full">
+            <p className="text-sm text-slate-500">아직 생성된 반이 없습니다. 먼저 반을 만들어주세요.</p>
+          </Card>
+        )}
+      </div>
+
+      {isCreateOpen && (
+        <ClassCreateModal
+          onClose={() => setIsCreateOpen(false)}
+          onSubmit={createClass}
+        />
+      )}
+    </TeacherLayout>
   );
 }
 
-function TeamCard({
-  team,
-  filter,
-  onFilterChange
+function ClassCreateModal({
+  onClose,
+  onSubmit,
 }: {
-  team: Team;
-  filter: SubjectFilter;
-  onFilterChange: (filter: SubjectFilter) => void;
+  onClose: () => void;
+  onSubmit: (formData: FormData) => void;
 }) {
-  const filters: SubjectFilter[] = ["전체", ...team.subjects];
-  const router = useRouter();
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/35 p-4" role="dialog" aria-modal="true">
+      <div className="w-full max-w-xl rounded-lg bg-white p-5 shadow-soft">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <h2 className="text-lg font-bold">반 만들기</h2>
+          <button type="button" className="rounded-md px-3 py-2 text-sm font-semibold text-slate-500 hover:bg-slate-100" onClick={onClose}>
+            닫기
+          </button>
+        </div>
+        <form action={onSubmit} className="grid gap-4">
+          <label className="grid gap-2 text-sm font-semibold">
+            반 이름
+            <Input name="name" required placeholder="예: Phonics A" />
+          </label>
+          <label className="grid gap-2 text-sm font-semibold">
+            설명
+            <Textarea name="description" placeholder="예: 초등 파닉스 기초반" />
+          </label>
+          <label className="grid gap-2 text-sm font-semibold">
+            상태
+            <Select name="status" defaultValue="active">
+              <option value="active">active</option>
+              <option value="archived">archived</option>
+            </Select>
+          </label>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={onClose}>취소</Button>
+            <Button type="submit">생성</Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function ClassStatusCard({
+  classItem,
+  selectedSubject,
+  onSelectSubject,
+}: {
+  classItem: ClassOverview;
+  selectedSubject: string;
+  onSelectSubject: (subject: string) => void;
+}) {
+  const subjects = useMemo(
+    () => subjectOrder.filter((subject) => subject === "전체" || classItem.subjects.includes(subject)),
+    [classItem.subjects],
+  );
+
+  const students = classItem.students.map((student) => ({
+    ...student,
+    reviewItems: filterBySubject(student.reviewItems, selectedSubject),
+    missingItems: filterBySubject(student.missingItems, selectedSubject),
+  })).filter((student) => selectedSubject === "전체" || student.reviewItems.length > 0 || student.missingItems.length > 0);
 
   return (
-    <section className="flex min-h-[520px] w-full min-w-0 flex-col rounded-lg border border-line bg-white p-4 shadow-soft">
+    <Card className="min-h-[620px]">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-xl font-bold">{team.name}</h2>
-          <p className="mt-1 text-xs font-semibold text-slate-500">학생 {team.students.length}명</p>
+          <h2 className="text-xl font-bold">{classItem.class_name}</h2>
+          <p className="mt-1 text-sm font-semibold text-slate-500">학생 {classItem.student_count}명</p>
         </div>
-        <Button type="button" variant="secondary" className="min-h-9 px-3 py-1.5 text-xs">과목 추가</Button>
+        <Button href={`/teacher/assignments/new?classId=${classItem.class_id}`} variant="secondary">과목 추가</Button>
       </div>
 
-      <div className="mt-4 flex flex-wrap gap-2">
-        {filters.map((item) => (
+      <div className="mt-4 grid grid-cols-3 gap-2 text-xs">
+        <Badge tone="blue">진행 {classItem.assigned_count}</Badge>
+        <Badge tone="red">미제출 {classItem.missing_count}</Badge>
+        <Badge tone="yellow">검토 {classItem.needs_review_count}</Badge>
+      </div>
+
+      <div className="mt-5 flex flex-wrap gap-2">
+        {subjects.map((subject) => (
           <button
-            key={item}
-            className={`rounded-full border px-3 py-1.5 text-xs font-bold transition ${
-              filter === item ? "border-action bg-action text-white" : "border-line bg-white text-slate-600 hover:border-action"
-            }`}
-            onClick={() => onFilterChange(item)}
+            key={subject}
+            type="button"
+            className={
+              selectedSubject === subject
+                ? "rounded-full bg-action px-4 py-2 text-sm font-bold text-white"
+                : "rounded-full border border-line bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:border-action"
+            }
+            onClick={() => onSelectSubject(subject)}
           >
-            {item}
+            {subject}
           </button>
         ))}
       </div>
 
-      <div className="mt-4 grid flex-1 gap-3 overflow-y-auto pr-1 md:max-h-[440px]">
-        {team.students.map((student) => {
-          const reviewRequested = filterHomeworks(student.reviewRequested, filter);
-          const incomplete = filterHomeworks(student.incomplete, filter);
-          return (
-            <article
-              key={student.id}
-              className="cursor-pointer rounded-md border border-line bg-slate-50 p-3 transition hover:border-action hover:bg-blue-50/40"
-              role="button"
-              tabIndex={0}
-              onClick={() => router.push(student.href)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") router.push(student.href);
-              }}
-            >
-              <h3 className="font-bold">{student.name}</h3>
-              <div className="mt-3 grid gap-2 text-sm">
-                <div className="grid grid-cols-[64px_1fr] gap-2">
-                  <p className="pt-1 text-xs font-bold text-blue-700">검토요청</p>
-                  <div className="flex min-w-0 flex-wrap gap-1.5">
-                    {reviewRequested.length > 0 ? reviewRequested.map((homework) => <HomeworkPill key={`${student.id}-review-${homework.subject}-${homework.title}`} homework={homework} tone="review" />) : <span className="text-xs text-slate-400">없음</span>}
-                  </div>
-                </div>
-                <div className="grid grid-cols-[64px_1fr] gap-2 border-t border-line pt-2">
-                  <p className="pt-1 text-xs font-bold text-red-700">미완료</p>
-                  <div className="flex min-w-0 flex-wrap gap-1.5">
-                    {incomplete.length > 0 ? incomplete.map((homework) => <HomeworkPill key={`${student.id}-incomplete-${homework.subject}-${homework.title}`} homework={homework} tone="incomplete" />) : <span className="text-xs text-slate-400">없음</span>}
-                  </div>
-                </div>
-              </div>
-            </article>
-          );
-        })}
+      <div className="mt-5 grid max-h-[470px] gap-3 overflow-y-auto pr-1">
+        {students.length === 0 ? (
+          <p className="rounded-md border border-dashed border-line p-6 text-center text-sm text-slate-500">표시할 숙제 상태가 없습니다.</p>
+        ) : (
+          students.map((student) => <StudentHomeworkCard key={student.studentId} student={student} />)
+        )}
       </div>
-      <Button href={`/teacher/classes/${team.id}`} className="mt-4 w-full" variant="secondary">반 상세 보기</Button>
-    </section>
+
+      <div className="mt-5 border-t border-line pt-4">
+        <Button href={`/teacher/classes/${classItem.class_id}`} variant="secondary" className="w-full">
+          반 상세보기
+        </Button>
+      </div>
+    </Card>
   );
 }
 
-export default function ClassesPage() {
-  const teams = buildTeams();
-  const [filters, setFilters] = useState<Record<string, SubjectFilter>>(() =>
-    Object.fromEntries(teams.map((team) => [team.id, "전체"]))
+function StudentHomeworkCard({
+  student,
+}: {
+  student: {
+    studentId: string;
+    studentName: string;
+    reviewItems: HomeworkItem[];
+    missingItems: HomeworkItem[];
+  };
+}) {
+  return (
+    <article className="rounded-md border border-line bg-slate-50 p-4">
+      <Button
+        href={`/teacher/students/${student.studentId}`}
+        variant="ghost"
+        className="min-h-0 justify-start p-0 text-lg font-bold text-ink hover:text-action"
+      >
+        {student.studentName}
+      </Button>
+      <StatusRow label="검토요청" tone="review" items={student.reviewItems} emptyLabel="없음" />
+      <div className="my-2 border-t border-line" />
+      <StatusRow label="미완료" tone="missing" items={student.missingItems} emptyLabel="없음" />
+    </article>
   );
+}
+
+function StatusRow({
+  label,
+  tone,
+  items,
+  emptyLabel,
+}: {
+  label: string;
+  tone: "review" | "missing";
+  items: HomeworkItem[];
+  emptyLabel: string;
+}) {
+  return (
+    <div className="mt-3 grid grid-cols-[76px_1fr] items-center gap-3 text-sm">
+      <p className={tone === "review" ? "font-bold text-action" : "font-bold text-red-700"}>{label}</p>
+      <div className="flex min-w-0 flex-wrap gap-2">
+        {items.length === 0 ? (
+          <span className="text-slate-400">{emptyLabel}</span>
+        ) : (
+          items.map((item) => <HomeworkPill key={`${label}-${item.assignmentId}`} item={item} tone={tone} />)
+        )}
+      </div>
+    </div>
+  );
+}
+
+function HomeworkPill({ item, tone }: { item: HomeworkItem; tone: "review" | "missing" }) {
+  const href = item.submissionId ? `/teacher/submissions/${item.submissionId}` : "/teacher/assignments";
+  const classes =
+    tone === "review"
+      ? "min-h-0 max-w-[245px] justify-start gap-2 rounded-full bg-blue-50 px-3 py-1.5 text-sm font-bold text-action hover:bg-blue-100"
+      : "min-h-0 max-w-[245px] justify-start gap-2 rounded-full bg-red-50 px-3 py-1.5 text-sm font-bold text-red-700 hover:bg-red-100";
 
   return (
-    <TeacherLayout title="팀 관리">
-      <div className="mb-5">
-        <h2 className="text-lg font-bold">팀별 숙제 상태</h2>
-        <p className="mt-1 text-sm text-slate-500">팀 카드를 좌우로 비교하면서 학생별 검토요청과 미완료 숙제를 확인합니다.</p>
-      </div>
-
-      <div className="pb-3">
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {teams.map((team) => (
-            <TeamCard
-              key={team.id}
-              team={team}
-              filter={filters[team.id] ?? "전체"}
-              onFilterChange={(filter) => setFilters((current) => ({ ...current, [team.id]: filter }))}
-            />
-          ))}
-        </div>
-      </div>
-    </TeacherLayout>
+    <Button href={href} variant="ghost" className={classes}>
+      <span className="rounded-full bg-white px-2 py-0.5 text-xs font-bold">{item.subject}</span>
+      <span className="min-w-0 truncate">{item.title}</span>
+    </Button>
   );
+}
+
+function filterBySubject(items: HomeworkItem[], selectedSubject: string) {
+  if (selectedSubject === "전체") return items;
+  return items.filter((item) => item.subject === selectedSubject);
 }

@@ -36,8 +36,11 @@ export const mockRepository = {
   getStudentById(studentId: string) {
     return mockStudents.find((student) => student.id === studentId);
   },
+  getStudentByLoginId(studentLoginId: string) {
+    return mockStudents.find((student) => student.studentLoginId === studentLoginId.toUpperCase()) ?? mockStudents[0];
+  },
   getStudentByAccessCode(accessCode: string) {
-    return mockStudents.find((student) => student.accessCode === accessCode.toUpperCase()) ?? mockStudents[0];
+    return this.getStudentByLoginId(accessCode);
   },
   getStudentAssignments(studentId: string) {
     const student = mockStudents.find((item) => item.id === studentId) ?? mockStudents[0];

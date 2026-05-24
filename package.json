@@ -6,15 +6,20 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "seed:auth": "node scripts/seed-auth.mjs",
     "lint": "next lint"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.106.1",
+    "bcryptjs": "^3.0.3",
     "next": "16.2.6",
+    "pg": "^8.21.0",
     "react": "19.0.0",
     "react-dom": "19.0.0"
   },
   "devDependencies": {
     "@types/node": "^22",
+    "@types/pg": "^8.20.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "autoprefixer": "^10.4.21",

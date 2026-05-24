@@ -1,53 +1,6 @@
-import type {
-  AssignmentTarget,
-  CalendarAssignment,
-  ClassCalendarState,
-  ClassHomeworkType,
-  ClassScheduleDay
-} from "@/features/class-calendar/types/classCalendar";
+import type { ClassHomeworkType } from "@/features/class-calendar/types/classCalendar";
 import type { StudentLearningHistory } from "@/features/student-management/types/studentManagement";
 import type { Student } from "@/types/student";
-
-const STORAGE_KEY = "homework-studio.class-calendar.v1";
-
-const seedScheduleDays: ClassScheduleDay[] = [
-  {
-    id: "schedule-class-a-2026-05-23",
-    classId: "class-a",
-    date: "2026-05-23",
-    hasClass: true,
-    startTime: "16:00",
-    endTime: "17:20",
-    bookTitle: "e-future Discovery 4.1",
-    progressTitle: "Unit 1 A Day at the Museum",
-    progressMemo: "본문 듣기와 핵심 표현 shadowing 진행",
-    nextPrep: "Unit 1 단어 복습",
-    homeworkIds: ["calendar-hw-1"]
-  }
-];
-
-const seedAssignments: CalendarAssignment[] = [
-  {
-    id: "calendar-hw-1",
-    classId: "class-a",
-    scheduleDayId: "schedule-class-a-2026-05-23",
-    title: "Unit 1 본문 녹음 숙제",
-    type: "listening_recording",
-    description: "본문을 듣고 자연스럽게 녹음해서 제출하세요.",
-    imageUrl: "/mock-images/alphabet-cards.svg",
-    passageText: "I went to the museum with my family. We saw old paintings, shiny stones, and a big dinosaur.",
-    audioFileName: "unit1_native.mp3",
-    assignedDate: "2026-05-23",
-    dueAt: "2026-05-25T23:59:00",
-    status: "published"
-  }
-];
-
-const seedAssignmentTargets: AssignmentTarget[] = [
-  { id: "target-1", assignmentId: "calendar-hw-1", studentId: "student-1", status: "submitted", submittedAt: "2026-05-24T09:20:00.000Z", reviewed: false },
-  { id: "target-2", assignmentId: "calendar-hw-1", studentId: "student-2", status: "submitted", submittedAt: "2026-05-24T10:10:00.000Z", reviewed: true, feedback: "속도와 억양이 안정적입니다." },
-  { id: "target-3", assignmentId: "calendar-hw-1", studentId: "student-3", status: "assigned", reviewed: false }
-];
 
 export function homeworkTypeLabel(type: ClassHomeworkType) {
   if (type === "listening_recording") return "듣기/녹음";
@@ -59,80 +12,50 @@ export function homeworkTypeLabel(type: ClassHomeworkType) {
   return "일반";
 }
 
-function seedState(): ClassCalendarState {
-  return {
-    scheduleDays: seedScheduleDays,
-    assignments: seedAssignments,
-    assignmentTargets: seedAssignmentTargets
-  };
-}
-
-function canUseStorage() {
-  return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
-}
-
-function readState(): ClassCalendarState {
-  if (!canUseStorage()) return seedState();
-  const raw = window.localStorage.getItem(STORAGE_KEY);
-  if (!raw) {
-    const seeded = seedState();
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(seeded));
-    return seeded;
-  }
-  try {
-    return JSON.parse(raw) as ClassCalendarState;
-  } catch {
-    const seeded = seedState();
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(seeded));
-    return seeded;
-  }
-}
-
-function writeState(state: ClassCalendarState) {
-  if (canUseStorage()) window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-}
-
 export const classCalendarRepository = {
   getInitialState() {
-    return seedState();
+    return { scheduleDays: [], assignments: [], assignmentTargets: [] };
   },
   loadState() {
-    return readState();
+    return this.getInitialState();
   },
-  saveState(state: ClassCalendarState) {
-    writeState(state);
+  async loadSchedule(classId: string, start?: string, end?: string) {
+    const params = new URLSearchParams();
+    if (start) params.set("start", start);
+    if (end) params.set("end", end);
+    const response = await fetch(`/api/teacher/classes/${classId}/schedule?${params.toString()}`, { cache: "no-store" });
+    if (!response.ok) throw new Error("수업 일정을 불러오지 못했습니다.");
+    return response.json();
   },
-  getLearningHistoryForManagedStudent(input: { studentId: string; classIds: string[]; classNames: string[] }, state = readState()): StudentLearningHistory[] {
-    return state.assignments
-      .filter((assignment) => input.classIds.includes(assignment.classId))
-      .map((assignment): StudentLearningHistory => {
-        const classIndex = input.classIds.indexOf(assignment.classId);
-        const target = state.assignmentTargets.find((item) => item.assignmentId === assignment.id && item.studentId === input.studentId);
-        return {
-          id: `calendar-history-${assignment.id}`,
-          studentId: input.studentId,
-          date: assignment.assignedDate,
-          assignmentTitle: assignment.title,
-          assignmentType: assignment.type,
-          className: input.classNames[classIndex] ?? "소속 반",
-          submitStatus: target?.status === "submitted" ? "submitted" : target?.status === "late" ? "late" : "not_submitted",
-          score: null,
-          reviewStatus: target?.reviewed ? "reviewed" : target?.status === "submitted" ? "pending" : "none",
-          detailHref: target?.status === "submitted" ? (input.studentId === "student-1" ? "/teacher/submissions/submission-1" : "/teacher/submissions/submission-2") : undefined
-        };
-      });
+  async saveScheduleDay(classId: string, input: unknown) {
+    const response = await fetch(`/api/teacher/classes/${classId}/schedule`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    if (!response.ok) throw new Error("수업 일정을 저장하지 못했습니다.");
+    return response.json();
   },
-  getClassHomeworkRows(classId: string, students: Student[], state = readState()) {
-    return state.assignments
-      .filter((assignment) => assignment.classId === classId)
-      .map((assignment) => {
-        const targets = state.assignmentTargets.filter((target) => target.assignmentId === assignment.id);
-        const submittedCount = targets.filter((target) => target.status === "submitted").length;
-        return {
-          assignment,
-          totalCount: targets.length || students.length,
-          submittedCount
-        };
-      });
-  }
+  async updateScheduleDay(classId: string, scheduleDayId: string, input: unknown) {
+    const response = await fetch(`/api/teacher/classes/${classId}/schedule/${scheduleDayId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    if (!response.ok) throw new Error("수업 일정을 수정하지 못했습니다.");
+    return response.json();
+  },
+  async deleteScheduleDay(classId: string, scheduleDayId: string) {
+    const response = await fetch(`/api/teacher/classes/${classId}/schedule/${scheduleDayId}`, { method: "DELETE" });
+    if (!response.ok) throw new Error("수업 일정을 삭제하지 못했습니다.");
+  },
+  saveState(_state?: unknown) {
+    // Removed: class calendar is persisted through route handlers and class_schedule_days.
+  },
+  getLearningHistoryForManagedStudent(): StudentLearningHistory[] {
+    return [];
+  },
+  getClassHomeworkRows(_classId: string, _students: Student[], _state?: unknown) {
+    return [];
+  },
 };

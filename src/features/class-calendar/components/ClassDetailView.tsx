@@ -10,7 +10,6 @@ import { Select } from "@/components/ui/Select";
 import { Textarea } from "@/components/ui/Textarea";
 import { formatDue } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { mockRepository } from "@/mocks/mockRepository";
 import {
   classCalendarRepository,
   homeworkTypeLabel
@@ -125,7 +124,7 @@ export function ClassDetailView({
   const [toast, setToast] = useState<string | null>(null);
 
   useEffect(() => {
-    setCurrentClass(mockRepository.getClassById(classItem.id) ?? classItem);
+    setCurrentClass(classItem);
     setCalendarState(classCalendarRepository.loadState());
   }, [classItem]);
 
@@ -227,7 +226,7 @@ function ClassOverviewTab({
             {students.map((student) => (
               <div key={student.id} className="flex items-center justify-between rounded-md border border-line p-3">
                 <span className="font-semibold">{student.name}</span>
-                <div className="flex gap-2"><Badge>{student.accessCode}</Badge><Badge tone={student.status === "active" ? "green" : "gray"}>{student.status}</Badge></div>
+                <div className="flex gap-2"><Badge>{student.studentLoginId}</Badge><Badge tone={student.status === "active" ? "green" : "gray"}>{student.status}</Badge></div>
               </div>
             ))}
           </div>

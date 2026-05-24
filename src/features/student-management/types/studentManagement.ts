@@ -3,6 +3,7 @@ export type StudentStatus = "active" | "inactive";
 export type ManagedStudent = {
   id: string;
   studentId: string;
+  studentLoginId?: string;
   password?: string;
   name: string;
   schoolName?: string;
@@ -40,6 +41,7 @@ export type CreateManagedStudentInput = {
   schoolName?: string;
   grade?: string;
   classId?: string;
+  classIds?: string[];
   className?: string;
   avatarKey?: string;
   memo?: string;
@@ -48,5 +50,5 @@ export type CreateManagedStudentInput = {
 };
 
 export type UpdateManagedStudentInput = Partial<
-  Pick<ManagedStudent, "password" | "name" | "schoolName" | "grade" | "avatarKey" | "memo" | "parentId" | "parentPassword" | "status">
+  Pick<ManagedStudent, "password" | "name" | "schoolName" | "grade" | "avatarKey" | "memo" | "parentId" | "parentPassword" | "status" | "classIds">
 >;
