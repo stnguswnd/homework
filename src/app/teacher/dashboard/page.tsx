@@ -11,6 +11,7 @@ import type { Student } from "@/types/student";
 
 type ScheduleType = "class_schedule" | "homework_due";
 type ScheduleStatus = "scheduled" | "due_today" | "closed";
+type CalendarFilter = "all" | "class" | "homework";
 
 type ScheduleHomework = {
   id: string;
@@ -52,7 +53,6 @@ type HomeworkDueSchedule = BaseSchedule & {
   classId: string;
   classHref: string;
   homeworkHref: string;
-  submissionsHref: string;
   time: string;
   homeworkTypeLabel: string;
   relatedClass: string;
@@ -101,8 +101,7 @@ const dashboardWeeklySchedules: DashboardSchedule[] = [
     type: "homework_due",
     classId: "class-a",
     classHref: "/teacher/classes/class-a",
-    homeworkHref: "/teacher/assignments/assignment-1",
-    submissionsHref: "/teacher/assignments/assignment-1/submissions",
+    homeworkHref: "/teacher/assignments",
     typeLabel: "숙제 마감",
     title: "Unit 1 본문 녹음 숙제",
     homeworkTypeLabel: "듣기/녹음",
@@ -150,8 +149,7 @@ const dashboardWeeklySchedules: DashboardSchedule[] = [
     type: "homework_due",
     classId: "class-b",
     classHref: "/teacher/classes/class-b",
-    homeworkHref: "/teacher/assignments/assignment-2",
-    submissionsHref: "/teacher/assignments/assignment-2/submissions",
+    homeworkHref: "/teacher/assignments",
     typeLabel: "숙제 마감",
     title: "Reading Plus Shadowing 03",
     homeworkTypeLabel: "문장 따라 읽기",
@@ -199,7 +197,6 @@ const dashboardWeeklySchedules: DashboardSchedule[] = [
     classId: "class-a",
     classHref: "/teacher/classes/class-a",
     homeworkHref: "/teacher/assignments",
-    submissionsHref: "/teacher/assignments",
     typeLabel: "숙제 마감",
     title: "Picture Talk Practice",
     homeworkTypeLabel: "이미지 보고 말하기",
@@ -246,8 +243,7 @@ const dashboardWeeklySchedules: DashboardSchedule[] = [
     type: "homework_due",
     classId: "class-b",
     classHref: "/teacher/classes/class-b",
-    homeworkHref: "/teacher/assignments/assignment-2",
-    submissionsHref: "/teacher/assignments/assignment-2/submissions",
+    homeworkHref: "/teacher/assignments",
     typeLabel: "숙제 마감",
     title: "Reading Plus Shadowing 03",
     homeworkTypeLabel: "문장 따라 읽기",
@@ -271,6 +267,7 @@ const baseWeekDays = [
 ];
 
 const weekStartDate = "2026-05-24";
+const todayDate = "2026-05-24";
 
 function addDaysToIso(date: string, days: number) {
   const [year, month, day] = date.split("-").map(Number);
@@ -292,21 +289,10 @@ function formatWeekRange(weekOffset: number) {
   return `${start.replaceAll("-", ".")} - ${end.replaceAll("-", ".")}`;
 }
 
-function typeTone(type: ScheduleType) {
-  if (type === "class_schedule") return "blue";
-  return "yellow";
-}
-
-function statusTone(status: DashboardSchedule["status"]) {
-  if (status === "due_today") return "yellow";
-  if (status === "closed") return "red";
-  return "gray";
-}
-
 export default function TeacherDashboardPage() {
   const summary = mockRepository.getTeacherDashboardSummary();
   const classes = mockRepository.getClasses();
-  const [calendarFilter, setCalendarFilter] = useState<"week" | "homework">("week");
+  const [calendarFilter, setCalendarFilter] = useState<CalendarFilter>("all");
   const [weekOffset, setWeekOffset] = useState(0);
   const [selectedSchedule, setSelectedSchedule] = useState<DashboardSchedule | null>(null);
   const pendingReviewCount = summary.recentSubmissions.filter((submission) => submission.status === "submitted").length;
@@ -329,6 +315,7 @@ export default function TeacherDashboardPage() {
   ];
 
   const filteredSchedules = useMemo(() => {
+    if (calendarFilter === "class") return dashboardWeeklySchedules.filter((item) => item.type === "class_schedule");
     if (calendarFilter === "homework") return dashboardWeeklySchedules.filter((item) => item.type === "homework_due");
     return dashboardWeeklySchedules;
   }, [calendarFilter]);
@@ -347,7 +334,7 @@ export default function TeacherDashboardPage() {
           onNextWeek={() => setWeekOffset((value) => value + 1)}
           onThisWeek={() => {
             setWeekOffset(0);
-            setCalendarFilter("week");
+            setCalendarFilter("all");
           }}
           onSelect={setSelectedSchedule}
         />
@@ -382,8 +369,8 @@ function WeeklyCalendarCard({
   onThisWeek,
   onSelect
 }: {
-  filter: "week" | "homework";
-  setFilter: (filter: "week" | "homework") => void;
+  filter: CalendarFilter;
+  setFilter: (filter: CalendarFilter) => void;
   schedules: DashboardSchedule[];
   days: Array<{ date: string; dayLabel: string; dateLabel: string }>;
   weekRangeLabel: string;
@@ -396,23 +383,38 @@ function WeeklyCalendarCard({
     <Card>
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <h2 className="text-lg font-bold">이번 주 캘린더</h2>
+          <h2 className="text-lg font-bold">이번 주 수업 · 숙제</h2>
           <p className="mt-1 text-sm text-slate-500">수업 시간표, 진도 요약, 숙제 마감을 한 주 단위로 확인합니다.</p>
         </div>
       </div>
-      <div className="mt-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+      <div className="mt-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
         <div className="flex items-center gap-2">
           <Button type="button" variant="secondary" onClick={onPrevWeek}>이전주</Button>
           <p className="min-w-[190px] text-center text-sm font-bold text-slate-700">{weekRangeLabel}</p>
           <Button type="button" variant="secondary" onClick={onNextWeek}>다음주</Button>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <button className={`rounded-md px-3 py-2 text-sm font-bold ${filter === "week" ? "bg-action text-white" : "border border-line bg-white text-slate-600"}`} onClick={onThisWeek}>이번 주</button>
-          <button className={`rounded-md px-3 py-2 text-sm font-bold ${filter === "homework" ? "bg-action text-white" : "border border-line bg-white text-slate-600"}`} onClick={() => setFilter("homework")}>숙제만 보기</button>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <Button type="button" variant="secondary" onClick={onThisWeek}>이번 주</Button>
+          <div className="flex overflow-hidden rounded-md border border-line bg-white p-1">
+            {[
+              ["all", "전체"],
+              ["class", "수업"],
+              ["homework", "숙제 마감"]
+            ].map(([value, label]) => (
+              <button
+                key={value}
+                className={`rounded px-3 py-1.5 text-sm font-bold transition ${filter === value ? "bg-action text-white" : "text-slate-600 hover:bg-slate-50"}`}
+                onClick={() => setFilter(value as CalendarFilter)}
+                type="button"
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
-      <div className="mt-4 overflow-x-auto pb-2">
-        <div className="grid min-w-max grid-flow-col auto-cols-[minmax(250px,280px)] gap-3">
+      <div className="mt-4">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
         {days.map((day) => (
           <WeeklyCalendarDayColumn key={day.date} day={day} schedules={schedules.filter((item) => item.date === day.date)} onSelect={onSelect} />
         ))}
@@ -431,12 +433,15 @@ function WeeklyCalendarDayColumn({
   schedules: DashboardSchedule[];
   onSelect: (schedule: DashboardSchedule) => void;
 }) {
+  const isToday = day.date === todayDate;
+
   return (
-    <div className="min-w-0 rounded-md border border-line bg-white p-3">
-      <div className="flex items-center justify-between">
+    <div className={isToday ? "min-w-0 rounded-md border border-blue-200 bg-white" : "min-w-0 rounded-md border border-line bg-white"}>
+      <div className={isToday ? "flex items-center justify-between gap-2 rounded-t-md bg-blue-50 px-3 py-2.5" : "flex items-center justify-between gap-2 rounded-t-md bg-slate-50 px-3 py-2.5"}>
         <h3 className="font-bold">{day.dayLabel} {day.dateLabel}</h3>
+        {isToday && <Badge tone="blue">오늘</Badge>}
       </div>
-      <div className="mt-3 grid max-h-80 gap-2 overflow-y-auto pr-1">
+      <div className="grid min-h-28 content-start gap-2 p-3">
         {schedules.length === 0 ? (
           <p className="px-1 py-2 text-sm text-slate-400">일정 없음</p>
         ) : (
@@ -457,28 +462,26 @@ function getScheduleTime(schedule: DashboardSchedule) {
 function WeeklyScheduleItem({ schedule, onSelect }: { schedule: DashboardSchedule; onSelect: (schedule: DashboardSchedule) => void }) {
   if (schedule.type === "class_schedule") {
     return (
-      <button className="min-w-0 rounded-md border border-line bg-white p-3 text-left text-sm transition hover:border-action" onClick={() => onSelect(schedule)}>
+      <button className="w-full min-w-0 rounded-md border border-line border-l-4 border-l-action bg-white p-3 text-left text-sm transition hover:border-action" onClick={() => onSelect(schedule)}>
         <div className="flex min-w-0 items-center gap-2">
-          <span className="shrink-0 text-xs font-bold text-slate-600">{schedule.startTime} - {schedule.endTime}</span>
-          <Badge tone={typeTone(schedule.type)}>{schedule.typeLabel}</Badge>
+          <span className="shrink-0 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-bold text-action">수업</span>
+          <span className="min-w-0 text-xs font-bold text-slate-600">{schedule.startTime} - {schedule.endTime}</span>
         </div>
-        <p className="mt-2 truncate font-bold">{schedule.title}</p>
-        <p className="mt-1 truncate text-xs text-slate-500">{schedule.bookTitle}</p>
-        <p className="mt-1 truncate text-xs font-semibold text-slate-700">{schedule.progressTitle}</p>
-        <p className="mt-2 text-xs font-bold text-blue-600">숙제 {schedule.homeworkCount}개</p>
+        <p className="mt-2 line-clamp-2 text-[15px] font-bold leading-snug text-slate-900">{schedule.title}</p>
+        <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-slate-500">{schedule.bookTitle} / {schedule.progressTitle}</p>
+        <p className="mt-2 text-xs font-bold text-action">숙제 {schedule.homeworkCount}개</p>
       </button>
     );
   }
 
   return (
-    <button className="min-w-0 rounded-md border border-line bg-white p-3 text-left text-sm transition hover:border-action" onClick={() => onSelect(schedule)}>
+    <button className={`w-full min-w-0 rounded-md border p-2.5 text-left text-sm transition hover:border-amber-300 ${schedule.status === "due_today" ? "border-amber-200 bg-amber-50/60" : "border-amber-100 bg-white"}`} onClick={() => onSelect(schedule)}>
       <div className="flex items-center gap-2">
-        <span className="shrink-0 font-bold">{schedule.time}</span>
-        <Badge tone={typeTone(schedule.type)}>{schedule.typeLabel}</Badge>
+        <span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-bold text-amber-700">마감</span>
+        <span className="shrink-0 text-xs font-bold text-amber-800">{schedule.time}</span>
       </div>
-      <p className="mt-2 truncate font-semibold">{schedule.title}</p>
-      <p className="mt-1 truncate text-xs text-slate-500">{schedule.homeworkTypeLabel}</p>
-      <div className="mt-2"><Badge tone={statusTone(schedule.status)}>{schedule.statusLabel}</Badge></div>
+      <p className="mt-1.5 line-clamp-2 font-semibold leading-snug text-slate-800">{schedule.title}</p>
+      <p className="mt-1 truncate text-xs text-slate-500">{schedule.relatedClass} / {schedule.homeworkTypeLabel}</p>
     </button>
   );
 }
@@ -543,9 +546,8 @@ function HomeworkDueDetail({ schedule }: { schedule: HomeworkDueSchedule }) {
         <DetailItem label="상태" value={schedule.statusLabel} />
         <DetailItem label="메모" value={schedule.memo} />
       </dl>
-      <div className="mt-5 grid gap-2 sm:grid-cols-2">
-        <Button href={schedule.homeworkHref} variant="secondary">숙제 상세 보기</Button>
-        <Button href={schedule.submissionsHref}>제출 현황 보기</Button>
+      <div className="mt-5">
+        <Button href={schedule.homeworkHref} variant="secondary">숙제 관리로</Button>
       </div>
     </>
   );
@@ -606,7 +608,7 @@ function ClassStudentSummary({ classes }: { classes: ReturnType<typeof mockRepos
             </div>
             <div className="mt-4 grid gap-2">
               {selectedAssignments.map((assignment) => (
-                <Button key={assignment.id} href={`/teacher/assignments/${assignment.id}`} variant="secondary" className="justify-between">
+                <Button key={assignment.id} href="/teacher/assignments" variant="secondary" className="justify-between">
                   <span className="truncate">{assignment.title}</span>
                   <span className="ml-3 shrink-0 text-xs text-slate-500">{formatDue(assignment.dueAt)}</span>
                 </Button>

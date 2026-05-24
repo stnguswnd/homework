@@ -92,8 +92,8 @@ export function SubmissionReviewPanel({
               <Badge>{formatDateTime(submission.submittedAt)}</Badge>
             </div>
           </div>
-          <Button href={`/teacher/assignments/${submission.assignmentId}/submissions`} variant="secondary">
-            제출 현황으로
+          <Button href="/teacher/assignments" variant="secondary">
+            숙제 관리로
           </Button>
         </div>
       </Card>

@@ -8,7 +8,6 @@ import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Textarea } from "@/components/ui/Textarea";
-import { classCalendarRepository } from "@/features/class-calendar/repositories/classCalendarRepository";
 import type { ClassHomeworkType } from "@/features/class-calendar/types/classCalendar";
 import { mockRepository } from "@/mocks/mockRepository";
 
@@ -91,43 +90,38 @@ export default function NewAssignmentPage() {
 function NewAssignmentForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const calendarAssignmentId = searchParams.get("calendarAssignmentId");
-  const calendarClassId = searchParams.get("classId");
+  const routeClassId = searchParams.get("classId");
   const editAssignment = useMemo(() => {
     const assignmentId = searchParams.get("assignmentId");
     return assignmentId ? mockRepository.getAssignmentById(assignmentId) : undefined;
   }, [searchParams]);
-  const calendarEditAssignment = useMemo(() => {
-    return calendarAssignmentId ? classCalendarRepository.getAssignmentById(calendarAssignmentId) : undefined;
-  }, [calendarAssignmentId]);
   const editItem = editAssignment?.items[0];
-  const isEditMode = Boolean(editAssignment || calendarEditAssignment);
+  const isEditMode = Boolean(editAssignment);
   const [selectedTemplateId, setSelectedTemplateId] = useState(templateOptions[0].id);
   const [message, setMessage] = useState("");
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
-  const [defaultDueDate, setDefaultDueDate] = useState(editAssignment?.dueAt?.slice(0, 10) ?? calendarEditAssignment?.dueAt?.slice(0, 10) ?? "2026-05-25");
-  const [defaultDueTime, setDefaultDueTime] = useState(editAssignment?.dueAt?.match(/T(\d{2}:\d{2})/)?.[1] ?? calendarEditAssignment?.dueAt?.match(/T(\d{2}:\d{2})/)?.[1] ?? "23:59");
-  const [visibility, setVisibility] = useState<VisibilityStatus>(editAssignment?.status === "draft" || calendarEditAssignment?.status === "draft" ? "draft" : "published");
+  const [defaultDueDate, setDefaultDueDate] = useState(editAssignment?.dueAt?.slice(0, 10) ?? "2026-05-25");
+  const [defaultDueTime, setDefaultDueTime] = useState(editAssignment?.dueAt?.match(/T(\d{2}:\d{2})/)?.[1] ?? "23:59");
+  const [visibility, setVisibility] = useState<VisibilityStatus>(editAssignment?.status === "draft" ? "draft" : "published");
   const [template, setTemplate] = useState<TemplateState>({
-    title: editAssignment?.title ?? calendarEditAssignment?.title ?? "Discovery Unit 1 Speaking Homework",
-    type: (editAssignment?.assignmentType as ClassHomeworkType | undefined) ?? calendarEditAssignment?.type ?? "listening_recording",
-    description: editAssignment?.description ?? calendarEditAssignment?.description ?? "원어민 음성을 듣고 같은 속도로 읽어 보세요.",
+    title: editAssignment?.title ?? "Discovery Unit 1 Speaking Homework",
+    type: (editAssignment?.assignmentType as ClassHomeworkType | undefined) ?? "listening_recording",
+    description: editAssignment?.description ?? "원어민 음성을 듣고 같은 속도로 읽어 보세요.",
     passageTitle: editItem?.title ?? "A Day at the Museum",
-    passageText: editItem?.passageText ?? calendarEditAssignment?.passageText ?? "I went to the museum with my family. We saw old paintings, shiny stones, and a big dinosaur. My favorite part was the space room.",
+    passageText: editItem?.passageText ?? "I went to the museum with my family. We saw old paintings, shiny stones, and a big dinosaur. My favorite part was the space room.",
     minRecordingSec: String(editItem?.minRecordingSec ?? 3),
     maxRecordingSec: String(editItem?.maxRecordingSec ?? 120),
-    audioFileName: editItem?.audioFileName ?? calendarEditAssignment?.audioFileName ?? "",
-    imageUrl: calendarEditAssignment?.imageUrl ?? DEFAULT_HOMEWORK_IMAGE_URL
+    audioFileName: editItem?.audioFileName ?? "",
+    imageUrl: DEFAULT_HOMEWORK_IMAGE_URL
   });
   const [classAssignments, setClassAssignments] = useState<Record<string, ClassAssignment>>(() => {
-    if (!calendarEditAssignment || !calendarClassId) return {};
-    const dueAt = calendarEditAssignment.dueAt ?? "2026-05-25T23:59:00";
+    if (!routeClassId || !assignmentClasses.some((classItem) => classItem.id === routeClassId)) return {};
     return {
-      [calendarClassId]: {
-        classId: calendarClassId,
-        dueDate: dueAt.slice(0, 10),
-        dueTime: dueAt.match(/T(\d{2}:\d{2})/)?.[1] ?? "23:59",
-        visibility: calendarEditAssignment.status === "draft" ? "draft" : "published",
+      [routeClassId]: {
+        classId: routeClassId,
+        dueDate: defaultDueDate,
+        dueTime: defaultDueTime,
+        visibility,
         targetMode: "all",
         selectedStudents: [],
         studentSearch: ""
@@ -237,11 +231,7 @@ function NewAssignmentForm() {
     }
     setMessage(status === "draft" ? "임시저장되었습니다." : "숙제가 배정되었습니다.");
     setIsConfirmOpen(false);
-    if (calendarEditAssignment && calendarClassId) {
-      router.push("/teacher/classes");
-      return;
-    }
-    if (editAssignment) router.push(`/teacher/assignments/${editAssignment.id}`);
+    if (editAssignment) router.push("/teacher/assignments");
   }
 
   return (
@@ -379,7 +369,7 @@ function NewAssignmentForm() {
             </div>
           </div>
           <div className="mt-5 grid gap-2 sm:flex sm:justify-end">
-            <Button href={calendarEditAssignment && calendarClassId ? "/teacher/classes" : editAssignment ? `/teacher/assignments/${editAssignment.id}` : "/teacher/assignments"} variant="secondary">취소</Button>
+            <Button href="/teacher/assignments" variant="secondary">취소</Button>
             <Button type="button" variant="secondary" onClick={() => saveMock("draft")}>임시저장</Button>
             <Button type="button" onClick={() => setIsConfirmOpen(true)}>숙제 배정하기</Button>
           </div>

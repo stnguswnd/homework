@@ -5,6 +5,5 @@ export type Class = {
   description?: string;
   status: "active" | "archived";
   studentCount: number;
-  activeAssignmentCount: number;
   createdAt: string;
 };

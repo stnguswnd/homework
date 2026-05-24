@@ -2,15 +2,6 @@ import type { Assignment } from "@/types/assignment";
 import type { Class } from "@/types/class";
 import type { Student } from "@/types/student";
 import type { Submission } from "@/types/submission";
-import type { Teacher } from "@/types/teacher";
-
-export const mockTeacher: Teacher = {
-  id: "teacher-1",
-  email: "teacher@example.com",
-  displayName: "김민지 선생님",
-  role: "teacher",
-  createdAt: "2026-05-01T09:00:00.000Z"
-};
 
 export const mockClasses: Class[] = [
   {
@@ -20,7 +11,6 @@ export const mockClasses: Class[] = [
     description: "초등 4-5학년 말하기 기초반",
     status: "active",
     studentCount: 8,
-    activeAssignmentCount: 2,
     createdAt: "2026-05-01T09:00:00.000Z"
   },
   {
@@ -30,7 +20,6 @@ export const mockClasses: Class[] = [
     description: "읽기와 듣기 병행반",
     status: "active",
     studentCount: 6,
-    activeAssignmentCount: 1,
     createdAt: "2026-05-04T09:00:00.000Z"
   },
   {
@@ -40,7 +29,6 @@ export const mockClasses: Class[] = [
     description: "발표와 인터뷰 집중반",
     status: "archived",
     studentCount: 5,
-    activeAssignmentCount: 0,
     createdAt: "2026-04-11T09:00:00.000Z"
   }
 ];

@@ -13,7 +13,6 @@ export default async function ClassDetailPage({ params }: { params: Promise<{ cl
     description: "",
     status: "active",
     studentCount: 0,
-    activeAssignmentCount: 0,
     createdAt: new Date().toISOString()
   } satisfies Class);
   const students = mockRepository.getStudentsByClassId(classId);

@@ -23,13 +23,34 @@ import type {
 import type { Class } from "@/types/class";
 import type { Student } from "@/types/student";
 
-type ClassDetailTab = "overview" | "calendar" | "homework";
+type SubjectName = "Phonics" | "AL" | "AR";
+type ClassDetailTab = "overview" | "calendar" | "exams";
 
 const tabs: Array<{ id: ClassDetailTab; label: string }> = [
   { id: "overview", label: "기본 관리" },
   { id: "calendar", label: "캘린더/진도관리" },
-  { id: "homework", label: "숙제 현황" }
+  { id: "exams", label: "시험 이력" }
 ];
+
+const subjectList: Array<{ name: SubjectName; schedule: string }> = [
+  { name: "Phonics", schedule: "월요일 17:00" },
+  { name: "AL", schedule: "수요일 17:00" },
+  { name: "AR", schedule: "금요일 17:00" }
+];
+
+function mockSubjectScore(studentId: string, subject: SubjectName) {
+  const base = studentId.charCodeAt(studentId.length - 1) || 70;
+  const offset = subject === "Phonics" ? 4 : subject === "AL" ? 9 : 13;
+  return Math.min(100, 60 + ((base + offset) % 36));
+}
+
+function subjectAssignments(assignments: ClassCalendarState["assignments"], subject: SubjectName) {
+  return assignments.filter((assignment) => {
+    if (subject === "Phonics") return assignment.type === "vocabulary";
+    if (subject === "AL") return assignment.type === "listening_recording" || assignment.type === "free_speaking";
+    return assignment.type === "sentence_shadowing" || assignment.type === "image_speaking";
+  });
+}
 
 function isoDate(date: Date) {
   const year = date.getFullYear();
@@ -154,7 +175,7 @@ export function ClassDetailView({
         </div>
       </div>
 
-      {activeTab === "overview" && <ClassOverviewTab classItem={currentClass} students={students} homeworkCount={homeworkRows.length} />}
+      {activeTab === "overview" && <ClassOverviewTab classItem={currentClass} students={students} homeworkCount={homeworkRows.length} calendarState={calendarState} />}
       {activeTab === "calendar" && (
         <CalendarTab
           classItem={currentClass}
@@ -169,14 +190,24 @@ export function ClassDetailView({
           onOpenHomework={() => router.push(`/teacher/assignments/new?classId=${classItem.id}&date=${selectedDate}`)}
         />
       )}
-      {activeTab === "homework" && <HomeworkStatusTab rows={homeworkRows} classId={classItem.id} />}
+      {activeTab === "exams" && <ExamHistoryTab students={students} classId={classItem.id} />}
     </div>
   );
 }
 
-function ClassOverviewTab({ classItem, students, homeworkCount }: { classItem: Class; students: Student[]; homeworkCount: number }) {
+function ClassOverviewTab({
+  classItem,
+  students,
+  homeworkCount,
+  calendarState
+}: {
+  classItem: Class;
+  students: Student[];
+  homeworkCount: number;
+  calendarState: ClassCalendarState;
+}) {
   return (
-    <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
+    <div className="grid gap-4">
       <div className="grid gap-4">
         <div className="grid gap-4 md:grid-cols-3">
           <Card><p className="text-sm text-slate-500">반 이름</p><p className="mt-2 text-xl font-bold">{classItem.name}</p></Card>
@@ -201,14 +232,8 @@ function ClassOverviewTab({ classItem, students, homeworkCount }: { classItem: C
             ))}
           </div>
         </Card>
+        <SubmissionHistorySummary students={students} calendarState={calendarState} classId={classItem.id} />
       </div>
-      <Card>
-        <label className="grid gap-2 text-sm font-semibold">
-          반 운영 메모
-          <Textarea defaultValue="월수반은 녹음 과제 제출 리마인드가 필요합니다." />
-        </label>
-        <div className="mt-4 flex justify-end"><Button>메모 저장</Button></div>
-      </Card>
     </div>
   );
 }
@@ -308,49 +333,178 @@ function CalendarTab({
   );
 }
 
-function HomeworkStatusTab({
-  rows,
+function SubmissionHistorySummary({
+  students,
+  calendarState,
   classId
 }: {
-  rows: ReturnType<typeof classCalendarRepository.getClassHomeworkRows>;
+  students: Student[];
+  calendarState: ClassCalendarState;
   classId: string;
 }) {
-  if (rows.length === 0) {
-    return <Card><p className="text-sm text-slate-500">아직 등록된 숙제가 없습니다.</p></Card>;
-  }
+  const classAssignments = calendarState.assignments.filter((assignment) => assignment.classId === classId);
+
   return (
     <Card>
-      <h2 className="text-lg font-bold">반 숙제 현황</h2>
-      <div className="mt-4 overflow-x-auto">
-        <table className="w-full min-w-[980px] text-left text-sm">
-          <thead className="text-slate-500"><tr><th className="py-2">숙제명</th><th>마감</th><th>유형</th><th>상태</th><th>제출 현황</th><th>피드백</th><th>관리</th></tr></thead>
-          <tbody>
-            {rows.map(({ assignment, submittedCount, totalCount }) => {
-              const missingCount = Math.max(0, totalCount - submittedCount);
-              const progress = totalCount === 0 ? 0 : Math.round((submittedCount / totalCount) * 100);
-              const feedbackNeeded = submittedCount;
-              const feedbackDone = 0;
-              return (
-                <tr key={assignment.id} className="border-t border-line align-top">
-                  <td className="py-3">
-                    <p className="font-semibold">{assignment.title}</p>
-                    <p className="mt-1 max-w-xs text-sm text-slate-500">{assignment.description || "학생에게 보일 숙제 안내입니다."}</p>
-                  </td>
-                  <td><p>{formatDue(assignment.dueAt)}</p><p className="mt-1 text-xs font-semibold text-slate-500">{dueDayLabel(assignment.dueAt)}</p></td>
-                  <td><Badge>{homeworkTypeLabel(assignment.type)}</Badge></td>
-                  <td><Badge tone={homeworkStatusTone(assignment.status)}>{homeworkStatusLabel(assignment.status)}</Badge></td>
-                  <td>
-                    <p>대상 {totalCount}명 · 제출 {submittedCount}명 · 미제출 {missingCount}명</p>
-                    <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-action" style={{ width: `${progress}%` }} /></div>
-                  </td>
-                  <td><p>피드백 필요 {feedbackNeeded}명</p><p className="mt-1 text-slate-500">피드백 완료 {feedbackDone}명</p></td>
-                  <td><Button href={`/teacher/assignments?calendarAssignmentId=${assignment.id}`} variant="secondary">숙제 관리로</Button></td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+      <div className="mb-4">
+        <h2 className="text-lg font-bold">제출 이력</h2>
+        <p className="mt-1 text-sm text-slate-500">과목별 숙제 안에서 학생별 제출 상태를 확인합니다.</p>
+      </div>
+      <div className="overflow-x-auto pb-2">
+        <div className="flex min-w-max gap-4">
+          {subjectList.map((subject) => (
+            <SubjectSubmissionCard
+              key={subject.name}
+              subject={subject}
+              students={students}
+              assignments={classAssignments}
+              targets={calendarState.assignmentTargets}
+            />
+          ))}
+        </div>
       </div>
     </Card>
+  );
+}
+
+function SubjectSubmissionCard({
+  subject,
+  students,
+  assignments,
+  targets
+}: {
+  subject: { name: SubjectName; schedule: string };
+  students: Student[];
+  assignments: ClassCalendarState["assignments"];
+  targets: ClassCalendarState["assignmentTargets"];
+}) {
+  const filteredAssignments = subjectAssignments(assignments, subject.name);
+
+  return (
+    <section className="w-[360px] shrink-0 rounded-md border border-line bg-white p-3">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h3 className="font-bold">{subject.name}</h3>
+        <Badge tone="blue">{filteredAssignments.length}개</Badge>
+      </div>
+      <div className="grid gap-3">
+        {filteredAssignments.length === 0 ? (
+          <p className="rounded-md border border-dashed border-line p-4 text-center text-sm text-slate-500">이 과목에 연결된 숙제가 없습니다.</p>
+        ) : (
+          filteredAssignments.map((assignment) => {
+            const submittedStudents = students.filter((student) => {
+              const target = targets.find((item) => item.assignmentId === assignment.id && item.studentId === student.id);
+              return target?.status === "submitted" || target?.status === "late";
+            });
+            const missingStudents = students.filter((student) => {
+              const target = targets.find((item) => item.assignmentId === assignment.id && item.studentId === student.id);
+              return !target || target.status === "assigned";
+            });
+
+            return (
+              <article key={assignment.id} className="rounded-md border border-line bg-slate-50 p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h4 className="truncate font-bold">{assignment.title}</h4>
+                    <p className="mt-1 text-xs text-slate-500">{formatDue(assignment.dueAt)}</p>
+                  </div>
+                  <Badge tone={homeworkStatusTone(assignment.status)}>{homeworkStatusLabel(assignment.status)}</Badge>
+                </div>
+                <div className="mt-3 grid gap-2 text-sm">
+                  <div className="grid grid-cols-[64px_1fr] gap-2">
+                    <p className="pt-1 text-xs font-bold text-blue-700">제출</p>
+                    <div className="flex min-w-0 flex-wrap gap-1.5">
+                      {submittedStudents.length > 0 ? submittedStudents.map((student) => <StudentStatusPill key={`${assignment.id}-${student.id}-submitted`} student={student} tone="submitted" />) : <span className="text-xs text-slate-400">없음</span>}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-[64px_1fr] gap-2 border-t border-line pt-2">
+                    <p className="pt-1 text-xs font-bold text-red-700">미완료</p>
+                    <div className="flex min-w-0 flex-wrap gap-1.5">
+                      {missingStudents.length > 0 ? missingStudents.map((student) => <StudentStatusPill key={`${assignment.id}-${student.id}-missing`} student={student} tone="missing" />) : <span className="text-xs text-slate-400">없음</span>}
+                    </div>
+                  </div>
+                </div>
+              </article>
+            );
+          })
+        )}
+      </div>
+    </section>
+  );
+}
+
+function StudentStatusPill({ student, tone }: { student: Student; tone: "submitted" | "missing" }) {
+  return (
+    <Button href={`/teacher/students/${student.id}`} variant="ghost" className={`min-h-0 max-w-full rounded-full border px-3 py-1.5 text-sm font-bold ${tone === "submitted" ? "border-blue-100 bg-blue-50 text-blue-700 hover:bg-blue-100" : "border-red-100 bg-red-50 text-red-700 hover:bg-red-100"}`}>
+      <span className="truncate">{student.name}</span>
+    </Button>
+  );
+}
+
+function ExamHistoryTab({
+  students,
+  classId
+}: {
+  students: Student[];
+  classId: string;
+}) {
+  return (
+    <div className="grid gap-4">
+      <Card>
+        <h2 className="text-lg font-bold">시험 이력</h2>
+        <p className="mt-1 text-sm text-slate-500">과목별 시험 점수를 학생 단위로 기재하고 관리합니다.</p>
+      </Card>
+      <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+        {subjectList.map((subject) => (
+          <ExamHistoryCard key={subject.name} subject={subject} students={students} classId={classId} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ExamHistoryCard({
+  subject,
+  students,
+  classId
+}: {
+  subject: { name: SubjectName; schedule: string };
+  students: Student[];
+  classId: string;
+}) {
+  return (
+    <section className="flex min-h-[460px] flex-col rounded-lg border border-line bg-white p-4 shadow-soft">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-xl font-bold">{subject.name}</h3>
+          <p className="mt-1 text-sm font-semibold text-slate-500">{subject.schedule}</p>
+        </div>
+        <Button type="button" variant="secondary" className="min-h-9 px-3 py-1.5 text-xs">시험 추가</Button>
+      </div>
+      <div className="mt-4 grid gap-3">
+        {students.map((student) => {
+          return (
+            <article key={student.id} className="rounded-md border border-line bg-slate-50 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <h4 className="font-bold">{student.name}</h4>
+                <label className="flex items-center gap-2 text-xs font-bold text-slate-500">
+                  시험 점수
+                  <Input className="h-9 w-20 bg-white text-right" type="number" min={0} max={100} defaultValue={mockSubjectScore(student.id, subject.name)} />
+                </label>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-500">
+                <div className="rounded-md bg-white p-2">
+                  <p className="font-bold text-slate-700">최근 시험</p>
+                  <p className="mt-1">2026-05-2{student.id.slice(-1)}</p>
+                </div>
+                <div className="rounded-md bg-white p-2">
+                  <p className="font-bold text-slate-700">반영 반</p>
+                  <p className="mt-1">{classId}</p>
+                </div>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </section>
   );
 }

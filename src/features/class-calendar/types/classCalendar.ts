@@ -39,21 +39,6 @@ export type AssignmentTarget = {
   feedback?: string;
 };
 
-export type CreateCalendarHomeworkInput = {
-  classId: string;
-  scheduleDayId: string;
-  assignedDate: string;
-  studentIds: string[];
-  title: string;
-  type: ClassHomeworkType;
-  description?: string;
-  imageUrl?: string;
-  dueAt?: string;
-  passageText?: string;
-  audioFileName?: string;
-  status: "draft" | "published" | "closed";
-};
-
 export type ClassCalendarState = {
   scheduleDays: ClassScheduleDay[];
   assignments: CalendarAssignment[];

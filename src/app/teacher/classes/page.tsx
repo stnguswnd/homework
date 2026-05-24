@@ -13,7 +13,6 @@ type SubjectFilter = "전체" | Subject;
 type StudentHomework = {
   subject: Subject;
   title: string;
-  href: string;
 };
 
 type TeamStudent = {
@@ -54,8 +53,7 @@ function buildTeams(): Team[] {
             .find((item) => item.studentId === student.id);
           const homework = {
             subject: assignmentSubject(assignment),
-            title: assignment.title,
-            href: `/teacher/assignments/${assignment.id}`
+            title: assignment.title
           };
           if (!submission || submission.status === "not_submitted") {
             incomplete.push(homework);
@@ -82,9 +80,7 @@ function filterHomeworks(items: StudentHomework[], filter: SubjectFilter) {
 
 function HomeworkPill({ homework, tone }: { homework: StudentHomework; tone: "review" | "incomplete" }) {
   return (
-    <a
-      href={homework.href}
-      onClick={(event) => event.stopPropagation()}
+    <span
       className={`inline-flex max-w-full items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold ${
         tone === "review"
           ? "border-blue-100 bg-blue-50 text-blue-700"
@@ -93,7 +89,7 @@ function HomeworkPill({ homework, tone }: { homework: StudentHomework; tone: "re
     >
       <span className="shrink-0 rounded-full bg-white/80 px-1.5 py-0.5 text-[11px] font-bold">{homework.subject}</span>
       <span className="truncate">{homework.title}</span>
-    </a>
+    </span>
   );
 }
 
@@ -110,7 +106,7 @@ function TeamCard({
   const router = useRouter();
 
   return (
-    <section className="flex min-h-[620px] w-[320px] shrink-0 flex-col rounded-lg border border-line bg-white p-4 shadow-soft">
+    <section className="flex min-h-[520px] w-full min-w-0 flex-col rounded-lg border border-line bg-white p-4 shadow-soft">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="text-xl font-bold">{team.name}</h2>
@@ -133,7 +129,7 @@ function TeamCard({
         ))}
       </div>
 
-      <div className="mt-4 grid flex-1 gap-3 overflow-y-auto pr-1">
+      <div className="mt-4 grid flex-1 gap-3 overflow-y-auto pr-1 md:max-h-[440px]">
         {team.students.map((student) => {
           const reviewRequested = filterHomeworks(student.reviewRequested, filter);
           const incomplete = filterHomeworks(student.incomplete, filter);
@@ -185,8 +181,8 @@ export default function ClassesPage() {
         <p className="mt-1 text-sm text-slate-500">팀 카드를 좌우로 비교하면서 학생별 검토요청과 미완료 숙제를 확인합니다.</p>
       </div>
 
-      <div className="overflow-x-auto pb-3">
-        <div className="flex min-w-max gap-4">
+      <div className="pb-3">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {teams.map((team) => (
             <TeamCard
               key={team.id}

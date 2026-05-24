@@ -3,8 +3,7 @@ import type {
   CalendarAssignment,
   ClassCalendarState,
   ClassHomeworkType,
-  ClassScheduleDay,
-  CreateCalendarHomeworkInput
+  ClassScheduleDay
 } from "@/features/class-calendar/types/classCalendar";
 import type { StudentLearningHistory } from "@/features/student-management/types/studentManagement";
 import type { Student } from "@/types/student";
@@ -102,74 +101,6 @@ export const classCalendarRepository = {
   },
   saveState(state: ClassCalendarState) {
     writeState(state);
-  },
-  getScheduleDaysByClassId(classId: string, state = readState()) {
-    return state.scheduleDays.filter((day) => day.classId === classId);
-  },
-  getAssignmentsByClassId(classId: string, state = readState()) {
-    return state.assignments.filter((assignment) => assignment.classId === classId);
-  },
-  getAssignmentById(assignmentId: string, state = readState()) {
-    return state.assignments.find((assignment) => assignment.id === assignmentId);
-  },
-  getTargetsByAssignmentId(assignmentId: string, state = readState()) {
-    return state.assignmentTargets.filter((target) => target.assignmentId === assignmentId);
-  },
-  createHomeworkFromCalendar(input: CreateCalendarHomeworkInput, currentState = readState()) {
-    const id = `calendar-hw-${Date.now()}`;
-    const assignment: CalendarAssignment = {
-      id,
-      classId: input.classId,
-      scheduleDayId: input.scheduleDayId,
-      title: input.title,
-      type: input.type,
-      description: input.description,
-      imageUrl: input.imageUrl,
-      passageText: input.passageText,
-      audioFileName: input.audioFileName,
-      assignedDate: input.assignedDate,
-      dueAt: input.dueAt,
-      status: input.status
-    };
-    const targets: AssignmentTarget[] = input.studentIds.map((studentId) => ({
-      id: `target-${id}-${studentId}`,
-      assignmentId: id,
-      studentId,
-      status: "assigned",
-      reviewed: false
-    }));
-    const scheduleDays = currentState.scheduleDays.map((day) =>
-      day.id === input.scheduleDayId ? { ...day, homeworkIds: [...day.homeworkIds, id] } : day
-    );
-    const nextState = {
-      scheduleDays,
-      assignments: [assignment, ...currentState.assignments],
-      assignmentTargets: [...targets, ...currentState.assignmentTargets]
-    };
-    writeState(nextState);
-    return { state: nextState, assignment, targets };
-  },
-  updateHomework(assignmentId: string, input: Partial<CalendarAssignment>, currentState = readState()) {
-    const nextState = {
-      ...currentState,
-      assignments: currentState.assignments.map((assignment) =>
-        assignment.id === assignmentId ? { ...assignment, ...input, id: assignment.id } : assignment
-      )
-    };
-    writeState(nextState);
-    return nextState;
-  },
-  deleteHomework(assignmentId: string, currentState = readState()) {
-    const nextState = {
-      scheduleDays: currentState.scheduleDays.map((day) => ({
-        ...day,
-        homeworkIds: day.homeworkIds.filter((id) => id !== assignmentId)
-      })),
-      assignments: currentState.assignments.filter((assignment) => assignment.id !== assignmentId),
-      assignmentTargets: currentState.assignmentTargets.filter((target) => target.assignmentId !== assignmentId)
-    };
-    writeState(nextState);
-    return nextState;
   },
   getLearningHistoryForManagedStudent(input: { studentId: string; classIds: string[]; classNames: string[] }, state = readState()): StudentLearningHistory[] {
     return state.assignments
