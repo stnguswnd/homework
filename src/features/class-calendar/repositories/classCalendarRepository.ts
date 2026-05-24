@@ -52,6 +52,9 @@ const seedAssignmentTargets: AssignmentTarget[] = [
 
 export function homeworkTypeLabel(type: ClassHomeworkType) {
   if (type === "listening_recording") return "듣기/녹음";
+  if (type === "image_speaking") return "이미지 보고 말하기";
+  if (type === "sentence_shadowing") return "문장 따라 읽기";
+  if (type === "free_speaking") return "자유 말하기";
   if (type === "writing") return "라이팅";
   if (type === "vocabulary") return "단어";
   return "일반";

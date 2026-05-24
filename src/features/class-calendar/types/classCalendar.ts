@@ -1,4 +1,4 @@
-export type ClassHomeworkType = "listening_recording" | "writing" | "vocabulary" | "general";
+export type ClassHomeworkType = "listening_recording" | "image_speaking" | "sentence_shadowing" | "free_speaking" | "writing" | "vocabulary" | "general";
 
 export type ClassScheduleDay = {
   id: string;

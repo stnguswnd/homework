@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Textarea } from "@/components/ui/Textarea";
 import { formatDateTime, formatDue } from "@/lib/format";
+import { mockRepository } from "@/mocks/mockRepository";
 import {
   classCalendarRepository,
   homeworkTypeLabel
@@ -57,6 +58,19 @@ function buildDueAt(date: string, time: string) {
   return `${date}T${time || "23:59"}:00`;
 }
 
+type SubmitFilter = "전체" | "제출 완료" | "미제출" | "지각 제출";
+type FeedbackFilter = "전체" | "피드백 필요" | "피드백 완료" | "미작성";
+
+function feedbackLabel(target?: AssignmentTarget) {
+  if (!target || target.status === "assigned") return "미작성";
+  return target.reviewed ? "피드백 완료" : "피드백 필요";
+}
+
+function feedbackTone(target?: AssignmentTarget) {
+  if (!target || target.status === "assigned") return "gray";
+  return target.reviewed ? "green" : "yellow";
+}
+
 export function ClassAssignmentDetailClient({
   classId,
   assignmentId,
@@ -71,6 +85,9 @@ export function ClassAssignmentDetailClient({
   const [state, setState] = useState(initialState);
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState<CalendarAssignment | null>(null);
+  const [studentQuery, setStudentQuery] = useState("");
+  const [submitFilter, setSubmitFilter] = useState<SubmitFilter>("전체");
+  const [feedbackFilter, setFeedbackFilter] = useState<FeedbackFilter>("전체");
 
   useEffect(() => {
     setState(classCalendarRepository.loadState());
@@ -78,6 +95,7 @@ export function ClassAssignmentDetailClient({
 
   const assignment = useMemo(() => classCalendarRepository.getAssignmentById(assignmentId, state), [assignmentId, state]);
   const targets = useMemo(() => classCalendarRepository.getTargetsByAssignmentId(assignmentId, state), [assignmentId, state]);
+  const classItem = mockRepository.getClassById(classId);
 
   useEffect(() => {
     if (assignment && !isEditing) setDraft(assignment);
@@ -122,6 +140,25 @@ export function ClassAssignmentDetailClient({
     window.location.href = `/teacher/classes/${classId}`;
   }
 
+  const studentRows = students.map((student) => ({
+    student,
+    target: targets.find((item) => item.studentId === student.id)
+  }));
+  const filteredRows = studentRows.filter(({ student, target }) => {
+    const submitLabel = targetStatusLabel(target?.status ?? "assigned");
+    const feedback = feedbackLabel(target);
+    return (
+      (!studentQuery.trim() || student.name.includes(studentQuery.trim())) &&
+      (submitFilter === "전체" || submitLabel === submitFilter) &&
+      (feedbackFilter === "전체" || feedback === feedbackFilter)
+    );
+  });
+  const submittedCount = targets.filter((target) => target.status === "submitted").length;
+  const lateCount = targets.filter((target) => target.status === "late").length;
+  const missingCount = Math.max(0, students.length - submittedCount - lateCount);
+  const feedbackNeededCount = targets.filter((target) => target.status !== "assigned" && !target.reviewed).length;
+  const feedbackDoneCount = targets.filter((target) => target.reviewed).length;
+
   return (
     <div className="grid gap-4">
       <Card>
@@ -161,10 +198,11 @@ export function ClassAssignmentDetailClient({
               <h2 className="text-xl font-bold">{assignment.title}</h2>
               <p className="mt-2 text-slate-600">{assignment.description}</p>
               <div className="mt-3 flex flex-wrap gap-2">
+                <Badge tone="blue">반: {classItem?.name ?? classId}</Badge>
                 <Badge tone="blue">{homeworkTypeLabel(assignment.type)}</Badge>
                 <Badge tone={assignmentStatusTone(assignment.status)}>{assignmentStatusLabel(assignment.status)}</Badge>
-                <Badge>{assignment.assignedDate}</Badge>
-                <Badge tone="yellow">{formatDue(assignment.dueAt)}</Badge>
+                <Badge>생성일: {assignment.assignedDate}</Badge>
+                <Badge tone="yellow">마감: {formatDue(assignment.dueAt)}</Badge>
               </div>
               {assignment.imageUrl && (
                 <div className="mt-4 overflow-hidden rounded-md border border-line bg-slate-50">
@@ -173,37 +211,81 @@ export function ClassAssignmentDetailClient({
               )}
             </div>
             <div className="flex gap-2">
-              <Button href={`/teacher/classes/${classId}`} variant="secondary">반 상세로</Button>
+              <Button href={`/teacher/classes/${classId}`} variant="secondary">반 목록으로</Button>
+              <Button type="button" variant="secondary" onClick={startEditing}>숙제 수정하기</Button>
+              <Button type="button" variant="secondary" onClick={() => window.alert("이 반에 대한 마감일, 공개 상태, 대상 학생 수정 목업입니다.")}>배정 수정하기</Button>
             </div>
           </div>
         )}
       </Card>
+      <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+        <SummaryCard label="대상 학생 수" value={students.length} />
+        <SummaryCard label="제출 완료 수" value={submittedCount} />
+        <SummaryCard label="미제출 수" value={missingCount} />
+        <SummaryCard label="지각 제출 수" value={lateCount} />
+        <SummaryCard label="피드백 필요 수" value={feedbackNeededCount} />
+        <SummaryCard label="피드백 완료 수" value={feedbackDoneCount} />
+      </div>
       <Card>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <h3 className="text-lg font-bold">숙제 관리</h3>
-          {!isEditing && <Button onClick={startEditing}>숙제 수정하기</Button>}
+        <div className="grid gap-3 md:grid-cols-3">
+          <label className="grid gap-2 text-sm font-semibold">학생명 검색<Input value={studentQuery} onChange={(event) => setStudentQuery(event.target.value)} placeholder="학생명 검색" /></label>
+          <label className="grid gap-2 text-sm font-semibold">제출 상태<Select value={submitFilter} onChange={(event) => setSubmitFilter(event.target.value as SubmitFilter)}><option>전체</option><option>제출 완료</option><option>미제출</option><option>지각 제출</option></Select></label>
+          <label className="grid gap-2 text-sm font-semibold">피드백 상태<Select value={feedbackFilter} onChange={(event) => setFeedbackFilter(event.target.value as FeedbackFilter)}><option>전체</option><option>피드백 필요</option><option>피드백 완료</option><option>미작성</option></Select></label>
         </div>
-        <div className="mt-4 overflow-x-auto">
-          <table className="w-full min-w-[720px] text-left text-sm">
+      </Card>
+      <Card>
+        <h3 className="text-lg font-bold">학생별 제출 관리</h3>
+        <div className="mt-4 hidden overflow-x-auto md:block">
+          <table className="w-full min-w-[860px] text-left text-sm">
             <thead className="text-slate-500">
-              <tr><th className="py-2">학생명</th><th>제출 상태</th><th>제출 시간</th><th>강사 확인</th></tr>
+              <tr><th className="py-2">학생명</th><th>제출 상태</th><th>제출 시간</th><th>제출 파일</th><th>피드백 상태</th><th>액션</th></tr>
             </thead>
             <tbody>
-              {students.map((student) => {
-                const target = targets.find((item) => item.studentId === student.id);
-                return (
-                  <tr key={student.id} className="border-t border-line">
-                    <td className="py-3 font-semibold">{student.name}</td>
-                    <td><Badge tone={targetStatusTone(target?.status ?? "assigned")}>{targetStatusLabel(target?.status ?? "assigned")}</Badge></td>
-                    <td>{formatDateTime(target?.submittedAt)}</td>
-                    <td>{target?.reviewed ? "확인 완료" : target?.status === "submitted" ? "확인 전" : "-"}</td>
-                  </tr>
-                );
-              })}
+              {filteredRows.map(({ student, target }) => <SubmissionRow key={student.id} studentName={student.name} target={target} />)}
             </tbody>
           </table>
         </div>
+        <div className="mt-4 grid gap-3 md:hidden">
+          {filteredRows.map(({ student, target }) => <SubmissionMobileCard key={student.id} studentName={student.name} target={target} />)}
+        </div>
       </Card>
+    </div>
+  );
+}
+
+function SummaryCard({ label, value }: { label: string; value: number }) {
+  return <Card><p className="text-sm text-slate-500">{label}</p><p className="mt-2 text-2xl font-bold">{value}명</p></Card>;
+}
+
+function SubmissionAction({ target }: { target?: AssignmentTarget }) {
+  if (!target || target.status === "assigned") return <Button type="button" variant="secondary" onClick={() => window.alert("알림 표시")}>알림 표시</Button>;
+  if (target.reviewed) return <Button type="button" variant="secondary" onClick={() => window.alert("피드백 보기")}>피드백 보기</Button>;
+  return <Button type="button" onClick={() => window.alert("피드백 작성")}>피드백 작성</Button>;
+}
+
+function SubmissionRow({ studentName, target }: { studentName: string; target?: AssignmentTarget }) {
+  return (
+    <tr className="border-t border-line">
+      <td className="py-3 font-semibold">{studentName}</td>
+      <td><Badge tone={targetStatusTone(target?.status ?? "assigned")}>{targetStatusLabel(target?.status ?? "assigned")}</Badge></td>
+      <td>{formatDateTime(target?.submittedAt)}</td>
+      <td>{target?.submittedAt ? <Button type="button" variant="secondary" onClick={() => window.alert("오디오 재생")}>오디오 재생</Button> : "-"}</td>
+      <td><Badge tone={feedbackTone(target)}>{feedbackLabel(target)}</Badge></td>
+      <td><SubmissionAction target={target} /></td>
+    </tr>
+  );
+}
+
+function SubmissionMobileCard({ studentName, target }: { studentName: string; target?: AssignmentTarget }) {
+  return (
+    <div className="rounded-md border border-line p-3">
+      <div className="flex items-start justify-between gap-3"><p className="font-bold">{studentName}</p><Badge tone={targetStatusTone(target?.status ?? "assigned")}>{targetStatusLabel(target?.status ?? "assigned")}</Badge></div>
+      <p className="mt-2 text-sm text-slate-500">제출 시간: {formatDateTime(target?.submittedAt)}</p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {target?.submittedAt && <Button type="button" variant="secondary" onClick={() => window.alert("오디오 재생")}>오디오 재생</Button>}
+        <Badge tone={feedbackTone(target)}>{feedbackLabel(target)}</Badge>
+        <SubmissionAction target={target} />
+      </div>
     </div>
   );
 }

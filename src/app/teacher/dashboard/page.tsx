@@ -7,6 +7,7 @@ import { mockRepository } from "@/mocks/mockRepository";
 
 export default function TeacherDashboardPage() {
   const summary = mockRepository.getTeacherDashboardSummary();
+  const classes = mockRepository.getClasses();
 
   const metrics = [
     ["총 반 수", summary.classCount],
@@ -60,6 +61,44 @@ export default function TeacherDashboardPage() {
             <Button href="/teacher/assignments/assignment-1/submissions" variant="secondary">제출 현황 보기</Button>
           </div>
         </Card>
+      </div>
+      <div className="mt-6">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <h2 className="text-lg font-bold">반별 학생</h2>
+          <Button href="/teacher/students" variant="secondary">학생 관리로</Button>
+        </div>
+        <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+          {classes.map((classItem) => {
+            const students = mockRepository.getStudentsByClassId(classItem.id);
+            return (
+              <Card key={classItem.id}>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="font-bold">{classItem.name}</h3>
+                    <p className="mt-1 text-sm text-slate-500">{classItem.description}</p>
+                  </div>
+                  <Badge tone={classItem.status === "active" ? "green" : "gray"}>{classItem.status === "active" ? "운영중" : "보관"}</Badge>
+                </div>
+                <div className="mt-4 grid gap-2">
+                  {students.length === 0 ? (
+                    <p className="rounded-md border border-dashed border-line p-4 text-center text-sm text-slate-500">배정된 학생이 없습니다.</p>
+                  ) : (
+                    students.map((student) => (
+                      <div key={student.id} className="flex items-center justify-between gap-3 rounded-md border border-line p-3">
+                        <div>
+                          <p className="font-semibold">{student.name}</p>
+                          <p className="text-xs text-slate-500">{student.accessCode}</p>
+                        </div>
+                        <Badge tone={student.status === "active" ? "green" : "gray"}>{student.status === "active" ? "활성" : "비활성"}</Badge>
+                      </div>
+                    ))
+                  )}
+                </div>
+                <Button href={`/teacher/classes/${classItem.id}`} className="mt-4 w-full" variant="secondary">반 상세 보기</Button>
+              </Card>
+            );
+          })}
+        </div>
       </div>
     </TeacherLayout>
   );

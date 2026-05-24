@@ -63,6 +63,15 @@ function homeworkStatusTone(status: CalendarAssignment["status"]) {
   return "yellow";
 }
 
+function dueDayLabel(value?: string) {
+  if (!value) return "-";
+  const today = new Date("2026-05-24T00:00:00");
+  const due = new Date(value);
+  const diff = Math.ceil((new Date(due.getFullYear(), due.getMonth(), due.getDate()).getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
+  if (diff === 0) return "오늘 마감";
+  return diff > 0 ? `D-${diff}` : `D+${Math.abs(diff)}`;
+}
+
 function ensureScheduleDay(state: ClassCalendarState, classId: string, date: string) {
   const existing = state.scheduleDays.find((day) => day.classId === classId && day.date === date);
   if (existing) return { state, day: existing };
@@ -313,20 +322,32 @@ function HomeworkStatusTab({
     <Card>
       <h2 className="text-lg font-bold">반 숙제 현황</h2>
       <div className="mt-4 overflow-x-auto">
-        <table className="w-full min-w-[820px] text-left text-sm">
-          <thead className="text-slate-500"><tr><th className="py-2">숙제명</th><th>생성일</th><th>마감</th><th>유형</th><th>상태</th><th>제출률</th><th>상세보기</th></tr></thead>
+        <table className="w-full min-w-[980px] text-left text-sm">
+          <thead className="text-slate-500"><tr><th className="py-2">숙제명</th><th>마감</th><th>유형</th><th>상태</th><th>제출 현황</th><th>피드백</th><th>관리</th></tr></thead>
           <tbody>
-            {rows.map(({ assignment, submittedCount, totalCount }) => (
-              <tr key={assignment.id} className="border-t border-line">
-                <td className="py-3 font-semibold">{assignment.title}</td>
-                <td>{assignment.assignedDate}</td>
-                <td>{formatDue(assignment.dueAt)}</td>
-                <td>{homeworkTypeLabel(assignment.type)}</td>
-                <td><Badge tone={homeworkStatusTone(assignment.status)}>{homeworkStatusLabel(assignment.status)}</Badge></td>
-                <td>{submittedCount}/{totalCount}</td>
-                <td><Button href={`/teacher/classes/${classId}/assignments/${assignment.id}`} variant="secondary">상세보기</Button></td>
-              </tr>
-            ))}
+            {rows.map(({ assignment, submittedCount, totalCount }) => {
+              const missingCount = Math.max(0, totalCount - submittedCount);
+              const progress = totalCount === 0 ? 0 : Math.round((submittedCount / totalCount) * 100);
+              const feedbackNeeded = submittedCount;
+              const feedbackDone = 0;
+              return (
+                <tr key={assignment.id} className="border-t border-line align-top">
+                  <td className="py-3">
+                    <p className="font-semibold">{assignment.title}</p>
+                    <p className="mt-1 max-w-xs text-sm text-slate-500">{assignment.description || "학생에게 보일 숙제 안내입니다."}</p>
+                  </td>
+                  <td><p>{formatDue(assignment.dueAt)}</p><p className="mt-1 text-xs font-semibold text-slate-500">{dueDayLabel(assignment.dueAt)}</p></td>
+                  <td><Badge>{homeworkTypeLabel(assignment.type)}</Badge></td>
+                  <td><Badge tone={homeworkStatusTone(assignment.status)}>{homeworkStatusLabel(assignment.status)}</Badge></td>
+                  <td>
+                    <p>대상 {totalCount}명 · 제출 {submittedCount}명 · 미제출 {missingCount}명</p>
+                    <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-action" style={{ width: `${progress}%` }} /></div>
+                  </td>
+                  <td><p>피드백 필요 {feedbackNeeded}명</p><p className="mt-1 text-slate-500">피드백 완료 {feedbackDone}명</p></td>
+                  <td><Button href={`/teacher/classes/${classId}/assignments/${assignment.id}`} variant="secondary">제출 관리</Button></td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
