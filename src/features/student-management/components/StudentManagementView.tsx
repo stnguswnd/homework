@@ -8,26 +8,25 @@ import { Select } from "@/components/ui/Select";
 import { Textarea } from "@/components/ui/Textarea";
 import { formatDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { mockRepository } from "@/mocks/mockRepository";
 import {
   gradeOptions,
   studentAvatars,
   studentRepository
 } from "@/features/student-management/repositories/studentRepository";
+import type { Class } from "@/types/class";
 import type {
-  CertificateHistory,
   ManagedStudent,
-  StudentFeedbackHistory,
   StudentLearningHistory,
   StudentManagementTab
 } from "@/features/student-management/types/studentManagement";
 
 const tabs: Array<{ id: StudentManagementTab; label: string }> = [
   { id: "detail", label: "상세정보" },
-  { id: "learning", label: "학습이력" },
-  { id: "rfb", label: "RFB 이력" },
-  { id: "afb", label: "AFB 이력" },
-  { id: "certificate", label: "수료증" }
+  { id: "learning", label: "학습이력" }
 ];
+
+type PasswordTarget = "student" | "parent";
 
 const avatarLabel: Record<string, string> = {
   robot: "AI",
@@ -86,14 +85,12 @@ export function StudentManagementView({ initialStudents }: { initialStudents: Ma
   const [activeTab, setActiveTab] = useState<StudentManagementTab>("detail");
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isBulkCreateModalOpen, setIsBulkCreateModalOpen] = useState(false);
-  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [passwordTarget, setPasswordTarget] = useState<PasswordTarget | null>(null);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [showMobileDetail, setShowMobileDetail] = useState(false);
   const [learningHistory, setLearningHistory] = useState<StudentLearningHistory[]>([]);
-  const [rfbHistory, setRfbHistory] = useState<StudentFeedbackHistory[]>([]);
-  const [afbHistory, setAfbHistory] = useState<StudentFeedbackHistory[]>([]);
-  const [certificates, setCertificates] = useState<CertificateHistory[]>([]);
+  const [classes, setClasses] = useState<Class[]>([]);
   const selectedStudent = students.find((student) => student.id === selectedStudentId) ?? students[0] ?? null;
 
   const filteredStudents = useMemo(() => {
@@ -107,11 +104,12 @@ export function StudentManagementView({ initialStudents }: { initialStudents: Ma
   }, [searchQuery, students]);
 
   useEffect(() => {
+    setClasses(mockRepository.getClasses().filter((classItem) => classItem.status === "active"));
+  }, []);
+
+  useEffect(() => {
     if (!selectedStudent) return;
     studentRepository.getLearningHistory(selectedStudent.id).then(setLearningHistory);
-    studentRepository.getFeedbackHistory(selectedStudent.id, "RFB").then(setRfbHistory);
-    studentRepository.getFeedbackHistory(selectedStudent.id, "AFB").then(setAfbHistory);
-    studentRepository.getCertificates(selectedStudent.id).then(setCertificates);
   }, [selectedStudent]);
 
   useEffect(() => {
@@ -145,10 +143,28 @@ export function StudentManagementView({ initialStudents }: { initialStudents: Ma
     setToast("학생 상태가 inactive로 변경되었습니다.");
   }
 
+  async function changePassword(password: string) {
+    if (!selectedStudent || !passwordTarget) return;
+    const nextStudents = await studentRepository.updateStudent(
+      selectedStudent.id,
+      passwordTarget === "student" ? { password } : { parentPassword: password },
+      students
+    );
+    setStudents(nextStudents);
+    setPasswordTarget(null);
+    setToast(passwordTarget === "student" ? "학생 비밀번호가 변경되었습니다." : "학부모 계정 비밀번호가 변경되었습니다.");
+  }
+
   async function createStudent(formData: FormData) {
     const name = String(formData.get("name") ?? "").trim();
+    const classId = String(formData.get("classId") ?? "").trim();
+    const selectedClass = classes.find((classItem) => classItem.id === classId);
     if (!name) {
       setToast("학생 이름을 입력해주세요.");
+      return;
+    }
+    if (!selectedClass) {
+      setToast("학생 등록 전에 반을 먼저 만들어주세요.");
       return;
     }
     const created = await studentRepository.createStudent({
@@ -157,7 +173,8 @@ export function StudentManagementView({ initialStudents }: { initialStudents: Ma
       password: String(formData.get("password") ?? ""),
       schoolName: String(formData.get("schoolName") ?? ""),
       grade: String(formData.get("grade") ?? ""),
-      className: String(formData.get("className") ?? ""),
+      classId: selectedClass.id,
+      className: selectedClass.name,
       avatarKey: String(formData.get("avatarKey") ?? "robot"),
       memo: String(formData.get("memo") ?? ""),
       parentId: String(formData.get("parentId") ?? ""),
@@ -218,20 +235,24 @@ export function StudentManagementView({ initialStudents }: { initialStudents: Ma
             onBack={() => setShowMobileDetail(false)}
             onCreate={() => setIsCreateModalOpen(true)}
             onBulkCreate={() => setIsBulkCreateModalOpen(true)}
-            onPassword={() => setIsPasswordModalOpen(true)}
+            onStudentPassword={() => setPasswordTarget("student")}
+            onParentPassword={() => setPasswordTarget("parent")}
             onDelete={() => setIsDeleteConfirmOpen(true)}
             onUpdate={updateSelectedStudent}
             learningHistory={learningHistory}
-            rfbHistory={rfbHistory}
-            afbHistory={afbHistory}
-            certificates={certificates}
           />
         </section>
       </div>
 
-      {isCreateModalOpen && <CreateStudentModal onClose={() => setIsCreateModalOpen(false)} onSubmit={createStudent} />}
+      {isCreateModalOpen && <CreateStudentModal classes={classes} onClose={() => setIsCreateModalOpen(false)} onSubmit={createStudent} />}
       {isBulkCreateModalOpen && <BulkCreateModal onClose={() => setIsBulkCreateModalOpen(false)} onSubmit={bulkCreateStudents} />}
-      {isPasswordModalOpen && <PasswordModal onClose={() => setIsPasswordModalOpen(false)} onSuccess={() => setToast("비밀번호 변경 목업이 저장되었습니다.")} />}
+      {passwordTarget && (
+        <PasswordModal
+          title={passwordTarget === "student" ? "학생 비밀번호 변경" : "학부모 계정 비밀번호 변경"}
+          onClose={() => setPasswordTarget(null)}
+          onSubmit={changePassword}
+        />
+      )}
       {isDeleteConfirmOpen && (
         <ConfirmModal
           title="학생삭제"
@@ -308,13 +329,11 @@ function StudentDetailPanel({
   onBack,
   onCreate,
   onBulkCreate,
-  onPassword,
+  onStudentPassword,
+  onParentPassword,
   onDelete,
   onUpdate,
-  learningHistory,
-  rfbHistory,
-  afbHistory,
-  certificates
+  learningHistory
 }: {
   student: ManagedStudent | null;
   activeTab: StudentManagementTab;
@@ -322,13 +341,11 @@ function StudentDetailPanel({
   onBack: () => void;
   onCreate: () => void;
   onBulkCreate: () => void;
-  onPassword: () => void;
+  onStudentPassword: () => void;
+  onParentPassword: () => void;
   onDelete: () => void;
   onUpdate: (input: Partial<ManagedStudent>) => void;
   learningHistory: StudentLearningHistory[];
-  rfbHistory: StudentFeedbackHistory[];
-  afbHistory: StudentFeedbackHistory[];
-  certificates: CertificateHistory[];
 }) {
   if (!student) {
     return (
@@ -371,11 +388,8 @@ function StudentDetailPanel({
         </div>
       </div>
       <div className="mt-5">
-        {activeTab === "detail" && <DetailTab student={student} onPassword={onPassword} onDelete={onDelete} onUpdate={onUpdate} />}
+        {activeTab === "detail" && <DetailTab student={student} onStudentPassword={onStudentPassword} onParentPassword={onParentPassword} onDelete={onDelete} onUpdate={onUpdate} />}
         {activeTab === "learning" && <LearningTab history={learningHistory} />}
-        {activeTab === "rfb" && <FeedbackTab history={rfbHistory} emptyText="아직 RFB 이력이 없습니다." />}
-        {activeTab === "afb" && <FeedbackTab history={afbHistory} emptyText="아직 AFB 이력이 없습니다." />}
-        {activeTab === "certificate" && <CertificateTab certificates={certificates} />}
       </div>
     </section>
   );
@@ -383,12 +397,14 @@ function StudentDetailPanel({
 
 function DetailTab({
   student,
-  onPassword,
+  onStudentPassword,
+  onParentPassword,
   onDelete,
   onUpdate
 }: {
   student: ManagedStudent;
-  onPassword: () => void;
+  onStudentPassword: () => void;
+  onParentPassword: () => void;
   onDelete: () => void;
   onUpdate: (input: Partial<ManagedStudent>) => void;
 }) {
@@ -400,36 +416,52 @@ function DetailTab({
 
   return (
     <div className="grid gap-5">
-      <div className="grid gap-4 xl:grid-cols-2">
-        <ReadOnlyField label="아이디" value={`${student.studentId} (${fieldDate(student.createdAt)})`} />
-        <div className="grid gap-2 text-sm font-semibold">
-          비밀번호
-          <Button variant="secondary" onClick={onPassword}>비밀번호 변경</Button>
-        </div>
-        <label className="grid gap-2 text-sm font-semibold">학생이름<Input value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label>
-        <div className="grid gap-3 sm:grid-cols-[1fr_140px]">
-          <label className="grid gap-2 text-sm font-semibold">학교정보<Input value={draft.schoolName ?? ""} onChange={(event) => setDraft({ ...draft, schoolName: event.target.value })} /></label>
-          <label className="grid gap-2 text-sm font-semibold">학년<Select value={draft.grade ?? ""} onChange={(event) => setDraft({ ...draft, grade: event.target.value })}>{gradeOptions.map((grade) => <option key={grade}>{grade}</option>)}</Select></label>
-        </div>
-        <ReadOnlyField label="반 정보" value={student.classNames.length > 0 ? student.classNames.join(", ") : "미배정"} />
-        <ReadOnlyField label="학부모 계정 아이디" value={draft.parentId || "미등록"} />
+      <div className="overflow-hidden rounded-md border border-line bg-white">
+        <DetailRow label="학생 아이디">
+          <span className="font-semibold">{student.studentId}</span>
+          <span className="ml-2 text-slate-500">({fieldDate(student.createdAt)})</span>
+        </DetailRow>
+        <DetailRow label="비밀번호">
+          <Button variant="secondary" onClick={onStudentPassword}>비밀번호 변경</Button>
+        </DetailRow>
+        <DetailRow label="학생 이름">
+          <Input value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
+        </DetailRow>
+        <DetailRow label="학교 정보">
+          <div className="grid gap-3 sm:grid-cols-[1fr_140px]">
+            <Input value={draft.schoolName ?? ""} onChange={(event) => setDraft({ ...draft, schoolName: event.target.value })} />
+            <Select value={draft.grade ?? ""} onChange={(event) => setDraft({ ...draft, grade: event.target.value })}>{gradeOptions.map((grade) => <option key={grade}>{grade}</option>)}</Select>
+          </div>
+        </DetailRow>
+        <DetailRow label="반 정보">
+          <span className="font-medium">{student.classNames.length > 0 ? student.classNames.join(", ") : "미배정"}</span>
+        </DetailRow>
+        <DetailRow label="학생 아이콘">
+          <div className="grid grid-cols-4 gap-2 sm:grid-cols-7">
+            {studentAvatars.map((avatar) => (
+              <button
+                key={avatar}
+                className={cn("rounded-md border p-2", draft.avatarKey === avatar ? "border-action bg-blue-50" : "border-line")}
+                onClick={() => setDraft({ ...draft, avatarKey: avatar })}
+                aria-label={`${avatar} 아바타 선택`}
+              >
+                <Avatar avatarKey={avatar} selected={draft.avatarKey === avatar} />
+              </button>
+            ))}
+          </div>
+        </DetailRow>
+        <DetailRow label="특이사항">
+          <Textarea value={draft.memo ?? ""} onChange={(event) => setDraft({ ...draft, memo: event.target.value })} />
+        </DetailRow>
       </div>
-      <div>
-        <p className="mb-2 text-sm font-semibold">학생 아이콘</p>
-        <div className="grid grid-cols-4 gap-2 sm:grid-cols-7">
-          {studentAvatars.map((avatar) => (
-            <button
-              key={avatar}
-              className={cn("rounded-md border p-2", draft.avatarKey === avatar ? "border-action bg-blue-50" : "border-line")}
-              onClick={() => setDraft({ ...draft, avatarKey: avatar })}
-              aria-label={`${avatar} 아바타 선택`}
-            >
-              <Avatar avatarKey={avatar} selected={draft.avatarKey === avatar} />
-            </button>
-          ))}
-        </div>
+      <div className="overflow-hidden rounded-md border border-line bg-white">
+        <DetailRow label="학부모 계정 아이디">
+          <span className="font-semibold">{draft.parentId || "미등록"}</span>
+        </DetailRow>
+        <DetailRow label="학부모 계정 비밀번호">
+          <Button variant="secondary" onClick={onParentPassword}>비밀번호 변경</Button>
+        </DetailRow>
       </div>
-      <label className="grid gap-2 text-sm font-semibold">특이사항<Textarea value={draft.memo ?? ""} onChange={(event) => setDraft({ ...draft, memo: event.target.value })} /></label>
       <div className="grid gap-2 sm:flex sm:justify-end">
         <Button variant="danger" onClick={onDelete}>학생삭제</Button>
         <Button onClick={() => onUpdate(draft)}>정보 수정</Button>
@@ -438,11 +470,11 @@ function DetailTab({
   );
 }
 
-function ReadOnlyField({ label, value }: { label: string; value: string }) {
+function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="grid gap-2 text-sm font-semibold">
-      {label}
-      <div className="min-h-10 rounded-md border border-line bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">{value}</div>
+    <div className="grid border-b border-line last:border-b-0 md:grid-cols-[220px_1fr]">
+      <div className="bg-slate-50 px-4 py-4 text-sm font-bold text-slate-700">{label}</div>
+      <div className="min-w-0 px-4 py-3 text-sm text-slate-800">{children}</div>
     </div>
   );
 }
@@ -480,45 +512,6 @@ function LearningTab({ history }: { history: StudentLearningHistory[] }) {
   );
 }
 
-function FeedbackTab({ history, emptyText }: { history: StudentFeedbackHistory[]; emptyText: string }) {
-  if (history.length === 0) return <EmptyState>{emptyText}</EmptyState>;
-  return (
-    <Table headers={["날짜", "숙제명", "문항", "피드백 내용", "작성자"]}>
-      {history.map((item) => (
-        <tr key={item.id} className="border-t border-line">
-          <td className="py-3">{item.date}</td>
-          <td className="font-semibold">{item.assignmentTitle}</td>
-          <td>{item.itemTitle ?? "-"}</td>
-          <td className="max-w-md">{item.comment}</td>
-          <td>{item.authorName ?? "자동 피드백"}</td>
-        </tr>
-      ))}
-    </Table>
-  );
-}
-
-function CertificateTab({ certificates }: { certificates: CertificateHistory[] }) {
-  if (certificates.length === 0) return <EmptyState>아직 발급된 수료증이 없습니다.</EmptyState>;
-  return (
-    <Table headers={["과정명", "수료일", "발급 상태", "수료증 보기"]}>
-      {certificates.map((item) => (
-        <tr key={item.id} className="border-t border-line">
-          <td className="py-3 font-semibold">{item.courseTitle}</td>
-          <td>{item.completedAt}</td>
-          <td><Badge tone={item.issueStatus === "issued" ? "green" : "gray"}>{item.issueStatus === "issued" ? "발급 완료" : "발급 전"}</Badge></td>
-          <td>
-            {item.certificateUrl ? (
-              <Button href={item.certificateUrl} variant="secondary">보기</Button>
-            ) : (
-              <Button disabled variant="secondary">준비 중</Button>
-            )}
-          </td>
-        </tr>
-      ))}
-    </Table>
-  );
-}
-
 function Table({ headers, children }: { headers: string[]; children: React.ReactNode }) {
   return (
     <div className="overflow-x-auto">
@@ -532,23 +525,34 @@ function Table({ headers, children }: { headers: string[]; children: React.React
   );
 }
 
-function CreateStudentModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (formData: FormData) => void }) {
+function CreateStudentModal({
+  classes,
+  onClose,
+  onSubmit
+}: {
+  classes: Class[];
+  onClose: () => void;
+  onSubmit: (formData: FormData) => void;
+}) {
+  const hasClasses = classes.length > 0;
+
   return (
     <Modal title="학생등록" onClose={onClose}>
       <form action={onSubmit} className="grid gap-4">
+        {!hasClasses && <p className="rounded-md bg-red-50 px-3 py-2 text-sm font-semibold text-danger">등록 가능한 반이 없습니다. 반을 먼저 만들어주세요.</p>}
         <div className="grid gap-4 md:grid-cols-2">
           <label className="grid gap-2 text-sm font-semibold">학생 이름<Input name="name" required /></label>
           <label className="grid gap-2 text-sm font-semibold">학생 아이디<Input name="studentId" placeholder="비워두면 자동 생성" /></label>
           <label className="grid gap-2 text-sm font-semibold">비밀번호<Input name="password" type="password" /></label>
           <label className="grid gap-2 text-sm font-semibold">학교명<Input name="schoolName" /></label>
           <label className="grid gap-2 text-sm font-semibold">학년<Select name="grade">{gradeOptions.map((grade) => <option key={grade}>{grade}</option>)}</Select></label>
-          <label className="grid gap-2 text-sm font-semibold">반<Input name="className" placeholder="월수 Basic Speaking" /></label>
+          <label className="grid gap-2 text-sm font-semibold">반<Select name="classId" required disabled={!hasClasses}>{classes.map((classItem) => <option key={classItem.id} value={classItem.id}>{classItem.name}</option>)}</Select></label>
           <label className="grid gap-2 text-sm font-semibold">학부모 아이디<Input name="parentId" /></label>
           <label className="grid gap-2 text-sm font-semibold">학부모 비밀번호<Input name="parentPassword" type="password" /></label>
         </div>
         <label className="grid gap-2 text-sm font-semibold">학생 아이콘<Select name="avatarKey">{studentAvatars.map((avatar) => <option key={avatar}>{avatar}</option>)}</Select></label>
         <label className="grid gap-2 text-sm font-semibold">특이사항<Textarea name="memo" /></label>
-        <div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={onClose}>취소</Button><Button type="submit">등록</Button></div>
+        <div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={onClose}>취소</Button><Button type="submit" disabled={!hasClasses}>등록</Button></div>
       </form>
     </Modal>
   );
@@ -578,7 +582,15 @@ function BulkCreateModal({ onClose, onSubmit }: { onClose: () => void; onSubmit:
   );
 }
 
-function PasswordModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
+function PasswordModal({
+  title,
+  onClose,
+  onSubmit
+}: {
+  title: string;
+  onClose: () => void;
+  onSubmit: (password: string) => void;
+}) {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [message, setMessage] = useState("");
@@ -592,15 +604,14 @@ function PasswordModal({ onClose, onSuccess }: { onClose: () => void; onSuccess:
       setMessage("새 비밀번호와 확인값이 일치해야 합니다.");
       return;
     }
-    onSuccess();
-    onClose();
+    onSubmit(password);
   }
 
   return (
-    <Modal title="비밀번호 변경" onClose={onClose}>
+    <Modal title={title} onClose={onClose}>
       <div className="grid gap-4">
-        <label className="grid gap-2 text-sm font-semibold">새 비밀번호<Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
-        <label className="grid gap-2 text-sm font-semibold">새 비밀번호 확인<Input type="password" value={confirm} onChange={(event) => setConfirm(event.target.value)} /></label>
+        <label className="grid gap-2 text-sm font-semibold">변경 비밀번호<Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+        <label className="grid gap-2 text-sm font-semibold">변경 비밀번호 확인<Input type="password" value={confirm} onChange={(event) => setConfirm(event.target.value)} /></label>
         {message && <p className="text-sm font-semibold text-danger">{message}</p>}
         <div className="flex justify-end gap-2"><Button variant="secondary" onClick={onClose}>취소</Button><Button onClick={submit}>변경</Button></div>
       </div>

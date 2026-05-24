@@ -31,28 +31,7 @@ export type StudentLearningHistory = {
   detailHref?: string;
 };
 
-export type StudentFeedbackHistory = {
-  id: string;
-  studentId: string;
-  feedbackType: "RFB" | "AFB";
-  date: string;
-  assignmentTitle: string;
-  itemTitle?: string;
-  comment: string;
-  score?: number | null;
-  authorName?: string;
-};
-
-export type CertificateHistory = {
-  id: string;
-  studentId: string;
-  courseTitle: string;
-  completedAt: string;
-  issueStatus: "not_issued" | "issued";
-  certificateUrl?: string;
-};
-
-export type StudentManagementTab = "detail" | "learning" | "rfb" | "afb" | "certificate";
+export type StudentManagementTab = "detail" | "learning";
 
 export type CreateManagedStudentInput = {
   studentId?: string;
@@ -60,6 +39,7 @@ export type CreateManagedStudentInput = {
   name: string;
   schoolName?: string;
   grade?: string;
+  classId?: string;
   className?: string;
   avatarKey?: string;
   memo?: string;
@@ -68,5 +48,5 @@ export type CreateManagedStudentInput = {
 };
 
 export type UpdateManagedStudentInput = Partial<
-  Pick<ManagedStudent, "name" | "schoolName" | "grade" | "avatarKey" | "memo" | "parentId" | "parentPassword" | "status">
+  Pick<ManagedStudent, "password" | "name" | "schoolName" | "grade" | "avatarKey" | "memo" | "parentId" | "parentPassword" | "status">
 >;

@@ -1,8 +1,6 @@
 import type {
-  CertificateHistory,
   CreateManagedStudentInput,
   ManagedStudent,
-  StudentFeedbackHistory,
   StudentLearningHistory,
   UpdateManagedStudentInput
 } from "@/features/student-management/types/studentManagement";
@@ -121,40 +119,6 @@ const mockLearningHistory: StudentLearningHistory[] = [
   }
 ];
 
-const mockFeedbackHistory: StudentFeedbackHistory[] = [
-  {
-    id: "rfb-001",
-    studentId: "student-1",
-    feedbackType: "RFB",
-    date: "2026-05-23",
-    assignmentTitle: "Discovery 4.1 Unit 1 Speaking",
-    itemTitle: "A Day at the Museum",
-    comment: "문장 끝 억양이 좋아졌어요. 다음 녹음에서는 museum 발음을 한 번 더 신경 써 봅시다.",
-    score: null,
-    authorName: "김민지 선생님"
-  },
-  {
-    id: "afb-001",
-    studentId: "student-2",
-    feedbackType: "AFB",
-    date: "2026-05-22",
-    assignmentTitle: "Reading Plus Shadowing 03",
-    comment: "속도는 안정적이며, /r/ 발음 반복 연습이 필요합니다.",
-    score: 82
-  }
-];
-
-const mockCertificates: CertificateHistory[] = [
-  {
-    id: "cert-001",
-    studentId: "student-5",
-    courseTitle: "Basic Speaking Level 1",
-    completedAt: "2026-05-10",
-    issueStatus: "issued",
-    certificateUrl: undefined
-  }
-];
-
 function createStudentId(input?: string) {
   return input?.trim() || `student_${Date.now()}`;
 }
@@ -175,7 +139,7 @@ export const studentRepository = {
       name: input.name,
       schoolName: input.schoolName,
       grade: input.grade,
-      classIds: [],
+      classIds: input.classId ? [input.classId] : [],
       classNames: input.className ? [input.className] : [],
       avatarKey: input.avatarKey ?? "robot",
       memo: input.memo,
@@ -206,12 +170,6 @@ export const studentRepository = {
       .map((item) => ({ ...item, studentId }));
     const existingIds = new Set(baseHistory.map((item) => item.assignmentTitle));
     return [...calendarHistory.filter((item) => !existingIds.has(item.assignmentTitle)), ...baseHistory];
-  },
-  async getFeedbackHistory(studentId: string, type: "RFB" | "AFB") {
-    return mockFeedbackHistory.filter((item) => item.studentId === studentId && item.feedbackType === type);
-  },
-  async getCertificates(studentId: string) {
-    return mockCertificates.filter((item) => item.studentId === studentId);
   }
 };
 

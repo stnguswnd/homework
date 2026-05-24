@@ -70,6 +70,15 @@ export function SubmissionReviewPanel({
     setToast(status === "reviewed" ? "제출물을 승인했습니다." : "제출물을 반려했습니다.");
   }
 
+  function saveFeedback() {
+    setSubmission((current) => ({
+      ...current,
+      teacherComment: comment.trim() || undefined,
+      reviewedAt: new Date().toISOString()
+    }));
+    setToast("피드백을 저장했습니다.");
+  }
+
   return (
     <div className="relative grid gap-4">
       {toast && <div className="fixed right-4 top-4 z-50 rounded-md bg-ink px-4 py-3 text-sm font-semibold text-white shadow-soft">{toast}</div>}
@@ -110,11 +119,19 @@ export function SubmissionReviewPanel({
 
       <Card>
         <h3 className="text-lg font-bold">검토</h3>
+        {submission.teacherComment && (
+          <div className="mt-4 rounded-md border border-line bg-slate-50 p-4 text-sm">
+            <p className="font-bold text-slate-700">현재 피드백</p>
+            <p className="mt-2 leading-6 text-slate-700">{submission.teacherComment}</p>
+            {submission.reviewedAt && <p className="mt-2 text-xs text-slate-500">저장 시간: {formatDateTime(submission.reviewedAt)}</p>}
+          </div>
+        )}
         <label className="mt-4 grid gap-2 text-sm font-semibold">
-          피드백 (선택)
-          <Textarea value={comment} onChange={(event) => setComment(event.target.value)} placeholder="필요할 때만 피드백을 남기세요." />
+          피드백
+          <Textarea value={comment} onChange={(event) => setComment(event.target.value)} placeholder="피드백을 작성하거나 다시 수정해서 저장하세요." />
         </label>
         <div className="mt-4 grid gap-2 sm:flex sm:justify-end">
+          <Button variant="secondary" onClick={saveFeedback}>피드백 저장</Button>
           <Button variant="secondary" onClick={() => review("returned")}>반려</Button>
           <Button onClick={() => review("reviewed")}>승인</Button>
         </div>

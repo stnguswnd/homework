@@ -1,4 +1,33 @@
 import { mockAssignments, mockClasses, mockStudents, mockSubmissions } from "@/mocks/mockData";
+import type { Class } from "@/types/class";
+
+const CLASS_STORAGE_KEY = "homework-studio.classes.v1";
+
+function canUseStorage() {
+  return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
+}
+
+function readStoredClasses() {
+  if (!canUseStorage()) return [];
+  const raw = window.localStorage.getItem(CLASS_STORAGE_KEY);
+  if (!raw) return [];
+  try {
+    return JSON.parse(raw) as Class[];
+  } catch {
+    window.localStorage.removeItem(CLASS_STORAGE_KEY);
+    return [];
+  }
+}
+
+function writeStoredClasses(classes: Class[]) {
+  if (canUseStorage()) window.localStorage.setItem(CLASS_STORAGE_KEY, JSON.stringify(classes));
+}
+
+function getAllClasses() {
+  const storedClasses = readStoredClasses();
+  const classIds = new Set(mockClasses.map((classItem) => classItem.id));
+  return [...mockClasses, ...storedClasses.filter((classItem) => !classIds.has(classItem.id))];
+}
 
 export const mockRepository = {
   getTeacherDashboardSummary() {
@@ -13,10 +42,24 @@ export const mockRepository = {
     };
   },
   getClasses() {
-    return mockClasses;
+    return getAllClasses();
   },
   getClassById(classId: string) {
-    return mockClasses.find((classItem) => classItem.id === classId);
+    return getAllClasses().find((classItem) => classItem.id === classId);
+  },
+  createClass(input: { name: string; description?: string }) {
+    const classItem: Class = {
+      id: `class-${Date.now()}`,
+      teacherId: "teacher-1",
+      name: input.name,
+      description: input.description,
+      status: "active",
+      studentCount: 0,
+      activeAssignmentCount: 0,
+      createdAt: new Date().toISOString()
+    };
+    writeStoredClasses([classItem, ...readStoredClasses()]);
+    return classItem;
   },
   getStudents() {
     return mockStudents;

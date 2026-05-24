@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -9,13 +10,14 @@ import { Select } from "@/components/ui/Select";
 import { Textarea } from "@/components/ui/Textarea";
 import { formatDue } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { mockRepository } from "@/mocks/mockRepository";
 import {
   classCalendarRepository,
   homeworkTypeLabel
 } from "@/features/class-calendar/repositories/classCalendarRepository";
 import type {
+  CalendarAssignment,
   ClassCalendarState,
-  ClassHomeworkType,
   ClassScheduleDay
 } from "@/features/class-calendar/types/classCalendar";
 import type { Class } from "@/types/class";
@@ -49,6 +51,18 @@ function moveMonth(baseDate: string, offset: number) {
   return isoDate(new Date(base.getFullYear(), base.getMonth() + offset, 1));
 }
 
+function homeworkStatusLabel(status: CalendarAssignment["status"]) {
+  if (status === "published") return "게시됨";
+  if (status === "draft") return "나만 보기";
+  return "종료";
+}
+
+function homeworkStatusTone(status: CalendarAssignment["status"]) {
+  if (status === "published") return "green";
+  if (status === "draft") return "gray";
+  return "yellow";
+}
+
 function ensureScheduleDay(state: ClassCalendarState, classId: string, date: string) {
   const existing = state.scheduleDays.find((day) => day.classId === classId && day.date === date);
   if (existing) return { state, day: existing };
@@ -73,15 +87,17 @@ export function ClassDetailView({
   students: Student[];
   initialCalendarState: ClassCalendarState;
 }) {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<ClassDetailTab>("overview");
+  const [currentClass, setCurrentClass] = useState(classItem);
   const [selectedDate, setSelectedDate] = useState("2026-05-23");
   const [calendarState, setCalendarState] = useState(initialCalendarState);
-  const [isHomeworkModalOpen, setIsHomeworkModalOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
   useEffect(() => {
+    setCurrentClass(mockRepository.getClassById(classItem.id) ?? classItem);
     setCalendarState(classCalendarRepository.loadState());
-  }, []);
+  }, [classItem]);
 
   useEffect(() => {
     if (!toast) return;
@@ -107,39 +123,10 @@ export function ClassDetailView({
     setToast("진도 기록이 저장되었습니다.");
   }
 
-  function createHomework(formData: FormData) {
-    const title = String(formData.get("title") ?? "").trim();
-    if (!title) {
-      setToast("숙제 제목을 입력해주세요.");
-      return;
-    }
-    const ensured = ensureScheduleDay(calendarState, classItem.id, selectedDate);
-    const result = classCalendarRepository.createHomeworkFromCalendar(
-      {
-        classId: classItem.id,
-        scheduleDayId: ensured.day.id,
-        assignedDate: selectedDate,
-        studentIds: students.map((student) => student.id),
-        title,
-        type: String(formData.get("type")) as ClassHomeworkType,
-        description: String(formData.get("description") ?? ""),
-        dueAt: String(formData.get("dueAt") ?? ""),
-        passageText: String(formData.get("passageText") ?? ""),
-        audioFileName: String(formData.get("audioFileName") ?? ""),
-        status: String(formData.get("status")) as "draft" | "published"
-      },
-      ensured.state
-    );
-    setCalendarState(result.state);
-    setIsHomeworkModalOpen(false);
-    setActiveTab("homework");
-    setToast("숙제가 생성되고 학생별 배정이 만들어졌습니다.");
-  }
-
   return (
     <div className="relative">
       {toast && <div className="fixed right-4 top-4 z-50 rounded-md bg-ink px-4 py-3 text-sm font-semibold text-white shadow-soft">{toast}</div>}
-      <p className="mb-5 text-slate-600">{classItem.description}</p>
+      <p className="mb-5 text-slate-600">{currentClass.description}</p>
       <div className="mb-5 overflow-x-auto border-b border-line">
         <div className="flex min-w-max gap-5">
           {tabs.map((tab) => (
@@ -158,10 +145,10 @@ export function ClassDetailView({
         </div>
       </div>
 
-      {activeTab === "overview" && <ClassOverviewTab classItem={classItem} students={students} homeworkCount={homeworkRows.length} />}
+      {activeTab === "overview" && <ClassOverviewTab classItem={currentClass} students={students} homeworkCount={homeworkRows.length} />}
       {activeTab === "calendar" && (
         <CalendarTab
-          classItem={classItem}
+          classItem={currentClass}
           days={getMonthDays(selectedDate)}
           selectedDate={selectedDate}
           selectedDay={selectedDay}
@@ -170,18 +157,10 @@ export function ClassDetailView({
           onSelectDate={setSelectedDate}
           onMoveMonth={(offset) => setSelectedDate(moveMonth(selectedDate, offset))}
           onSave={updateScheduleDay}
-          onOpenHomework={() => setIsHomeworkModalOpen(true)}
+          onOpenHomework={() => router.push(`/teacher/assignments/new?classId=${classItem.id}&date=${selectedDate}`)}
         />
       )}
       {activeTab === "homework" && <HomeworkStatusTab rows={homeworkRows} classId={classItem.id} />}
-
-      {isHomeworkModalOpen && (
-        <HomeworkModal
-          selectedDate={selectedDate}
-          onClose={() => setIsHomeworkModalOpen(false)}
-          onSubmit={createHomework}
-        />
-      )}
     </div>
   );
 }
@@ -311,7 +290,7 @@ function CalendarTab({
           <div className="border-t border-line pt-4">
             <p className="mb-2 text-sm font-bold">이 날짜 숙제</p>
             <div className="grid gap-2">
-              {selectedHomework.length === 0 ? <p className="text-sm text-slate-500">등록된 숙제가 없습니다.</p> : selectedHomework.map((homework) => <div key={homework.id} className="rounded-md border border-line p-3"><p className="font-semibold">{homework.title}</p><p className="text-sm text-slate-500">{homeworkTypeLabel(homework.type)} / {formatDue(homework.dueAt)}</p></div>)}
+              {selectedHomework.length === 0 ? <p className="text-sm text-slate-500">등록된 숙제가 없습니다.</p> : selectedHomework.map((homework) => <div key={homework.id} className="rounded-md border border-line p-3">{homework.imageUrl && <img src={homework.imageUrl} alt="" className="mb-3 h-24 w-full rounded-md object-contain bg-slate-50" />}<p className="font-semibold">{homework.title}</p><p className="text-sm text-slate-500">{homeworkTypeLabel(homework.type)} / {formatDue(homework.dueAt)}</p></div>)}
             </div>
           </div>
         </div>
@@ -335,7 +314,7 @@ function HomeworkStatusTab({
       <h2 className="text-lg font-bold">반 숙제 현황</h2>
       <div className="mt-4 overflow-x-auto">
         <table className="w-full min-w-[820px] text-left text-sm">
-          <thead className="text-slate-500"><tr><th className="py-2">숙제명</th><th>생성일</th><th>마감일</th><th>유형</th><th>상태</th><th>제출률</th><th>상세보기</th></tr></thead>
+          <thead className="text-slate-500"><tr><th className="py-2">숙제명</th><th>생성일</th><th>마감</th><th>유형</th><th>상태</th><th>제출률</th><th>상세보기</th></tr></thead>
           <tbody>
             {rows.map(({ assignment, submittedCount, totalCount }) => (
               <tr key={assignment.id} className="border-t border-line">
@@ -343,7 +322,7 @@ function HomeworkStatusTab({
                 <td>{assignment.assignedDate}</td>
                 <td>{formatDue(assignment.dueAt)}</td>
                 <td>{homeworkTypeLabel(assignment.type)}</td>
-                <td><Badge tone={assignment.status === "published" ? "green" : "gray"}>{assignment.status === "published" ? "게시됨" : assignment.status}</Badge></td>
+                <td><Badge tone={homeworkStatusTone(assignment.status)}>{homeworkStatusLabel(assignment.status)}</Badge></td>
                 <td>{submittedCount}/{totalCount}</td>
                 <td><Button href={`/teacher/classes/${classId}/assignments/${assignment.id}`} variant="secondary">상세보기</Button></td>
               </tr>
@@ -352,38 +331,5 @@ function HomeworkStatusTab({
         </table>
       </div>
     </Card>
-  );
-}
-
-function HomeworkModal({
-  selectedDate,
-  onClose,
-  onSubmit
-}: {
-  selectedDate: string;
-  onClose: () => void;
-  onSubmit: (formData: FormData) => void;
-}) {
-  return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/35 p-4" role="dialog" aria-modal="true">
-      <form action={onSubmit} className="max-h-[90vh] w-full max-w-2xl overflow-auto rounded-lg bg-white p-5 shadow-soft">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <div><p className="text-sm text-slate-500">{selectedDate}</p><h2 className="text-lg font-bold">날짜별 숙제 추가</h2></div>
-          <button type="button" className="rounded-md px-3 py-2 text-sm font-semibold text-slate-500 hover:bg-slate-100" onClick={onClose}>닫기</button>
-        </div>
-        <div className="grid gap-4">
-          <label className="grid gap-2 text-sm font-semibold">숙제 제목<Input name="title" required defaultValue="Unit 1 본문 녹음 숙제" /></label>
-          <div className="grid gap-4 md:grid-cols-3">
-            <label className="grid gap-2 text-sm font-semibold">숙제 유형<Select name="type"><option value="listening_recording">듣기/녹음</option><option value="writing">라이팅</option><option value="vocabulary">단어</option><option value="general">일반</option></Select></label>
-            <label className="grid gap-2 text-sm font-semibold">마감일<Input name="dueAt" type="date" defaultValue="2026-05-25" /></label>
-            <label className="grid gap-2 text-sm font-semibold">상태<Select name="status"><option value="published">게시됨</option><option value="draft">초안</option></Select></label>
-          </div>
-          <label className="grid gap-2 text-sm font-semibold">설명<Textarea name="description" defaultValue="학생에게 보일 숙제 안내입니다." /></label>
-          <label className="grid gap-2 text-sm font-semibold">지문<Textarea name="passageText" placeholder="듣기/녹음 과제일 경우 입력" /></label>
-          <label className="grid gap-2 text-sm font-semibold">MP3 파일명<Input name="audioFileName" placeholder="unit1_native.mp3" /></label>
-          <div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={onClose}>취소</Button><Button type="submit">숙제 생성</Button></div>
-        </div>
-      </form>
-    </div>
   );
 }

@@ -21,6 +21,7 @@ export type CalendarAssignment = {
   title: string;
   type: ClassHomeworkType;
   description?: string;
+  imageUrl?: string;
   passageText?: string;
   audioFileName?: string;
   assignedDate: string;
@@ -46,10 +47,11 @@ export type CreateCalendarHomeworkInput = {
   title: string;
   type: ClassHomeworkType;
   description?: string;
+  imageUrl?: string;
   dueAt?: string;
   passageText?: string;
   audioFileName?: string;
-  status: "draft" | "published";
+  status: "draft" | "published" | "closed";
 };
 
 export type ClassCalendarState = {

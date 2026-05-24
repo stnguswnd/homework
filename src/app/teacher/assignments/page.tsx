@@ -23,6 +23,7 @@ export default function AssignmentsPage() {
                 </div>
                 <div className="flex gap-2">
                   <Button href={`/teacher/assignments/${assignment.id}`} variant="secondary">상세</Button>
+                  <Button href={`/teacher/assignments/new?assignmentId=${assignment.id}`} variant="secondary">수정하기</Button>
                   <Button href={`/teacher/assignments/${assignment.id}/submissions`}>제출 현황 {submissions.length}</Button>
                 </div>
               </div>

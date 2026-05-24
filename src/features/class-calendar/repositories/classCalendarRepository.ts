@@ -35,10 +35,11 @@ const seedAssignments: CalendarAssignment[] = [
     title: "Unit 1 본문 녹음 숙제",
     type: "listening_recording",
     description: "본문을 듣고 자연스럽게 녹음해서 제출하세요.",
+    imageUrl: "/mock-images/alphabet-cards.svg",
     passageText: "I went to the museum with my family. We saw old paintings, shiny stones, and a big dinosaur.",
     audioFileName: "unit1_native.mp3",
     assignedDate: "2026-05-23",
-    dueAt: "2026-05-25",
+    dueAt: "2026-05-25T23:59:00",
     status: "published"
   }
 ];
@@ -120,6 +121,7 @@ export const classCalendarRepository = {
       title: input.title,
       type: input.type,
       description: input.description,
+      imageUrl: input.imageUrl,
       passageText: input.passageText,
       audioFileName: input.audioFileName,
       assignedDate: input.assignedDate,
@@ -143,6 +145,28 @@ export const classCalendarRepository = {
     };
     writeState(nextState);
     return { state: nextState, assignment, targets };
+  },
+  updateHomework(assignmentId: string, input: Partial<CalendarAssignment>, currentState = readState()) {
+    const nextState = {
+      ...currentState,
+      assignments: currentState.assignments.map((assignment) =>
+        assignment.id === assignmentId ? { ...assignment, ...input, id: assignment.id } : assignment
+      )
+    };
+    writeState(nextState);
+    return nextState;
+  },
+  deleteHomework(assignmentId: string, currentState = readState()) {
+    const nextState = {
+      scheduleDays: currentState.scheduleDays.map((day) => ({
+        ...day,
+        homeworkIds: day.homeworkIds.filter((id) => id !== assignmentId)
+      })),
+      assignments: currentState.assignments.filter((assignment) => assignment.id !== assignmentId),
+      assignmentTargets: currentState.assignmentTargets.filter((target) => target.assignmentId !== assignmentId)
+    };
+    writeState(nextState);
+    return nextState;
   },
   getLearningHistoryForManagedStudent(input: { studentId: string; classIds: string[]; classNames: string[] }, state = readState()): StudentLearningHistory[] {
     return state.assignments
