@@ -13,6 +13,7 @@ type TargetRow = {
   assignment_id: string;
   assignment_item_id: string;
   submission_id: string | null;
+  due_at: Date | null;
 };
 
 function safeFileName(fileName: string) {
@@ -46,14 +47,16 @@ export async function POST(request: Request) {
           at.id as target_id,
           at.assignment_id,
           ai.id as assignment_item_id,
-          sub.id as submission_id
+          sub.id as submission_id,
+          coalesce(at.due_at, a.due_at) as due_at
         from assignment_targets at
+        join assignments a on a.id = at.assignment_id and a.teacher_id = $4
         join assignment_items ai on ai.assignment_id = at.assignment_id and ai.id = $3
         left join submissions sub on sub.assignment_id = at.assignment_id and sub.student_id = at.student_id
         where at.assignment_id = $1 and at.student_id = $2
         limit 1
       `,
-      [assignmentId, session.studentId, assignmentItemId],
+      [assignmentId, session.studentId, assignmentItemId, session.teacherId],
     );
 
     if (!target.rows[0]) {
@@ -61,6 +64,7 @@ export async function POST(request: Request) {
     }
 
     const submissionId = target.rows[0].submission_id ?? `submission-${randomUUID()}`;
+    const targetStatus = target.rows[0].due_at && target.rows[0].due_at.getTime() < Date.now() ? "late" : "submitted";
     const fileName = safeFileName(file.name);
     const storagePath = `submissions/${submissionId}/${assignmentItemId}/${fileName}`;
     const bytes = Buffer.from(await file.arrayBuffer());
@@ -81,15 +85,15 @@ export async function POST(request: Request) {
     await client.query(
       `
         insert into submissions (id, assignment_id, student_id, assignment_target_id, status, submitted_at)
-        values ($1, $2, $3, $4, 'submitted', now())
+        values ($1, $2, $3, $4, $5, now())
         on conflict (assignment_id, student_id)
         do update set
           assignment_target_id = excluded.assignment_target_id,
-          status = 'submitted',
+          status = excluded.status,
           submitted_at = now(),
           updated_at = now()
       `,
-      [submissionId, assignmentId, session.studentId, target.rows[0].target_id],
+      [submissionId, assignmentId, session.studentId, target.rows[0].target_id, targetStatus],
     );
 
     await client.query(
@@ -123,14 +127,16 @@ export async function POST(request: Request) {
     );
 
     await client.query(
-      "update assignment_targets set status = 'submitted', submitted_at = now(), updated_at = now() where id = $1",
-      [target.rows[0].target_id],
+      "update assignment_targets set status = $2, submitted_at = now(), updated_at = now() where id = $1",
+      [target.rows[0].target_id, targetStatus],
     );
 
     await client.query("commit");
 
     return NextResponse.json({
       submissionId,
+      submittedAt: new Date().toISOString(),
+      status: targetStatus,
       recordingStoragePath: storagePath,
       recordingUrl: publicUrl,
     });

@@ -3,7 +3,7 @@ import { randomUUID } from "crypto";
 
 import { postgresPool } from "@/lib/postgres";
 import { hashStudentPassword } from "@/server/auth/studentPassword";
-import { mockTeacherId } from "@/server/teacher/mockTeacher";
+import { requireTeacherSession } from "@/server/teacher/session";
 
 export const runtime = "nodejs";
 
@@ -44,7 +44,7 @@ function mapStudent(row: StudentRow) {
   };
 }
 
-async function findStudent(studentId: string) {
+async function findStudent(teacherId: string, studentId: string) {
   const result = await postgresPool.query<StudentRow>(
     `
       select
@@ -66,12 +66,12 @@ async function findStudent(studentId: string) {
       where s.id = $1 and s.teacher_id = $2
       group by s.id
     `,
-    [studentId, mockTeacherId],
+    [studentId, teacherId],
   );
   return result.rows[0] ? mapStudent(result.rows[0]) : null;
 }
 
-async function validateClassIds(client: { query: typeof postgresPool.query }, classIds: string[]) {
+async function validateClassIds(client: { query: typeof postgresPool.query }, teacherId: string, classIds: string[]) {
   const uniqueClassIds = Array.from(new Set(classIds.filter(Boolean)));
   if (uniqueClassIds.length === 0) {
     return { valid: false, classIds: uniqueClassIds, error: "학생을 배정할 반을 최소 1개 선택해주세요." };
@@ -79,7 +79,7 @@ async function validateClassIds(client: { query: typeof postgresPool.query }, cl
 
   const result = await client.query<{ id: string }>(
     "select id from classes where teacher_id = $1 and status = 'active' and id = any($2::text[])",
-    [mockTeacherId, uniqueClassIds],
+    [teacherId, uniqueClassIds],
   );
   if (result.rows.length !== uniqueClassIds.length) {
     return { valid: false, classIds: uniqueClassIds, error: "선택한 반 중 유효하지 않은 반이 있습니다." };
@@ -88,17 +88,18 @@ async function validateClassIds(client: { query: typeof postgresPool.query }, cl
 }
 
 export async function GET(_request: Request, { params }: Params) {
+  const { teacherId } = await requireTeacherSession();
   const { studentId } = await params;
-  const student = await findStudent(studentId);
+  const student = await findStudent(teacherId, studentId);
   if (!student) return NextResponse.json({ error: "학생을 찾을 수 없습니다." }, { status: 404 });
   return NextResponse.json(student);
 }
 
 export async function PATCH(request: Request, { params }: Params) {
+  const { teacherId } = await requireTeacherSession();
   const { studentId } = await params;
   const body = await request.json().catch(() => null) as {
     studentLoginId?: string;
-    studentId?: string;
     password?: string;
     name?: string;
     schoolName?: string;
@@ -115,7 +116,7 @@ export async function PATCH(request: Request, { params }: Params) {
   try {
     await client.query("begin");
 
-    const existing = await client.query("select id from students where id = $1 and teacher_id = $2", [studentId, mockTeacherId]);
+    const existing = await client.query("select id from students where id = $1 and teacher_id = $2", [studentId, teacherId]);
     if (!existing.rows[0]) {
       await client.query("rollback");
       return NextResponse.json({ error: "학생을 찾을 수 없습니다." }, { status: 404 });
@@ -128,10 +129,9 @@ export async function PATCH(request: Request, { params }: Params) {
       updates.push(`${column} = $${values.length}`);
     };
 
-    const nextLoginId = body.studentLoginId?.trim() || body.studentId?.trim();
+    const nextLoginId = body.studentLoginId?.trim();
     if (nextLoginId) {
       setValue("student_login_id", nextLoginId);
-      setValue("student_code", nextLoginId);
     }
     if (typeof body.password === "string" && body.password.trim()) {
       setValue("password_hash", await hashStudentPassword(body.password));
@@ -144,7 +144,7 @@ export async function PATCH(request: Request, { params }: Params) {
     if (body.status === "active" || body.status === "inactive") setValue("status", body.status);
 
     if (updates.length > 0) {
-      values.push(studentId, mockTeacherId);
+      values.push(studentId, teacherId);
       await client.query(
         `update students set ${updates.join(", ")}, updated_at = now() where id = $${values.length - 1} and teacher_id = $${values.length}`,
         values,
@@ -152,7 +152,7 @@ export async function PATCH(request: Request, { params }: Params) {
     }
 
     if (Array.isArray(body.classIds)) {
-      const classValidation = await validateClassIds(client, body.classIds);
+      const classValidation = await validateClassIds(client, teacherId, body.classIds);
       if (!classValidation.valid) {
         await client.query("rollback");
         return NextResponse.json({ error: classValidation.error }, { status: 400 });
@@ -168,13 +168,13 @@ export async function PATCH(request: Request, { params }: Params) {
             where c.id = $3 and c.teacher_id = $4
             on conflict (class_id, student_id) do nothing
           `,
-          [`membership-${randomUUID()}`, studentId, classId, mockTeacherId],
+          [`membership-${randomUUID()}`, studentId, classId, teacherId],
         );
       }
     }
 
     await client.query("commit");
-    const student = await findStudent(studentId);
+    const student = await findStudent(teacherId, studentId);
     return NextResponse.json(student);
   } catch (error) {
     await client.query("rollback");
@@ -189,6 +189,7 @@ export async function PATCH(request: Request, { params }: Params) {
 }
 
 export async function DELETE(_request: Request, { params }: Params) {
+  const { teacherId } = await requireTeacherSession();
   const { studentId } = await params;
   const result = await postgresPool.query(
     `
@@ -197,9 +198,9 @@ export async function DELETE(_request: Request, { params }: Params) {
       where id = $1 and teacher_id = $2
       returning id
     `,
-    [studentId, mockTeacherId],
+    [studentId, teacherId],
   );
   if (!result.rows[0]) return NextResponse.json({ error: "학생을 찾을 수 없습니다." }, { status: 404 });
-  const student = await findStudent(studentId);
+  const student = await findStudent(teacherId, studentId);
   return NextResponse.json(student);
 }

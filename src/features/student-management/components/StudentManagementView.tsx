@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { gradeOptions, studentAvatars, studentRepository } from "@/features/student-management/repositories/studentRepository";
 import type { Class } from "@/types/class";
 import type { ManagedStudent, StudentLearningHistory, StudentManagementTab } from "@/features/student-management/types/studentManagement";
+import { assignmentTypeLabel as formatAssignmentTypeLabel } from "@/lib/assignmentTypes";
 
 const tabs: Array<{ id: StudentManagementTab; label: string }> = [
   { id: "detail", label: "상세정보" },
@@ -626,15 +627,8 @@ function ConfirmModal({ title, message, onCancel, onConfirm }: { title: string; 
   );
 }
 
-function assignmentTypeLabel(type: StudentLearningHistory["assignmentType"]) {
-  if (type === "listening_recording") return "듣기/녹음";
-  if (type === "image_speaking") return "이미지 말하기";
-  if (type === "sentence_shadowing") return "문장 따라 읽기";
-  if (type === "free_speaking") return "자유 말하기";
-  if (type === "writing") return "라이팅";
-  if (type === "vocabulary") return "단어";
-  if (type === "general") return "일반";
-  return "퀴즈";
+function assignmentTypeLabel(type: string) {
+  return formatAssignmentTypeLabel(type);
 }
 
 function submitStatusLabel(status: StudentLearningHistory["submitStatus"]) {

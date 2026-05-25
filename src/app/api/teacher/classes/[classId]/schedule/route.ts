@@ -2,7 +2,7 @@ import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 
 import { query } from "@/lib/postgres";
-import { mockTeacherId } from "@/server/teacher/mockTeacher";
+import { requireTeacherSession } from "@/server/teacher/session";
 
 export const runtime = "nodejs";
 
@@ -36,14 +36,17 @@ function mapRow(row: ScheduleRow) {
   };
 }
 
-async function assertClass(classId: string) {
-  const result = await query("select id from classes where id = $1 and teacher_id = $2 limit 1", [classId, mockTeacherId]);
+async function assertClass(teacherId: string, classId: string) {
+  const result = await query("select id from classes where id = $1 and teacher_id = $2 limit 1", [classId, teacherId]);
   return Boolean(result.rows[0]);
 }
 
 export async function GET(request: Request, context: { params: Promise<{ classId: string }> }) {
+  const { teacherId } = await requireTeacherSession();
   const { classId } = await context.params;
-  if (!(await assertClass(classId))) return NextResponse.json({ error: "반을 찾을 수 없습니다." }, { status: 404 });
+  if (!(await assertClass(teacherId, classId))) {
+    return NextResponse.json({ error: "반을 찾을 수 없습니다." }, { status: 404 });
+  }
 
   const { searchParams } = new URL(request.url);
   const start = searchParams.get("start") ?? "1900-01-01";
@@ -61,15 +64,18 @@ export async function GET(request: Request, context: { params: Promise<{ classId
       group by d.id
       order by d.date asc
     `,
-    [classId, mockTeacherId, start, end],
+    [classId, teacherId, start, end],
   );
 
   return NextResponse.json({ scheduleDays: result.rows.map(mapRow) });
 }
 
 export async function POST(request: Request, context: { params: Promise<{ classId: string }> }) {
+  const { teacherId } = await requireTeacherSession();
   const { classId } = await context.params;
-  if (!(await assertClass(classId))) return NextResponse.json({ error: "반을 찾을 수 없습니다." }, { status: 404 });
+  if (!(await assertClass(teacherId, classId))) {
+    return NextResponse.json({ error: "반을 찾을 수 없습니다." }, { status: 404 });
+  }
 
   const body = await request.json().catch(() => ({}));
   const id = `schedule-${randomUUID()}`;

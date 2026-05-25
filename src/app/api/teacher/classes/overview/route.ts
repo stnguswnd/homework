@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 
 import { query } from "@/lib/postgres";
-import { mockTeacherId } from "@/server/teacher/mockTeacher";
+import { normalizeAssignmentSubject } from "@/lib/assignmentTypes";
+import { requireTeacherSession } from "@/server/teacher/session";
 
 export const runtime = "nodejs";
 
@@ -45,9 +46,8 @@ type ClassOverview = {
   students: StudentOverview[];
 };
 
-const defaultSubjects = ["Phonics", "AL", "AR"];
-
 export async function GET() {
+  const { teacherId } = await requireTeacherSession();
   const result = await query<Row>(
     `
       select
@@ -57,7 +57,7 @@ export async function GET() {
         s.name as student_name,
         a.id as assignment_id,
         a.title as assignment_title,
-        coalesce(a.assignment_subject, 'AL') as assignment_subject,
+        a.assignment_subject,
         at.status as target_status,
         at.reviewed as target_reviewed,
         sub.id as submission_id,
@@ -71,7 +71,7 @@ export async function GET() {
       where c.teacher_id = $1 and c.status = 'active'
       order by c.created_at asc, s.name asc, a.updated_at desc nulls last
     `,
-    [mockTeacherId],
+    [teacherId],
   );
 
   const classes = new Map<string, ClassOverview>();
@@ -92,7 +92,7 @@ export async function GET() {
         submitted_count: 0,
         missing_count: 0,
         needs_review_count: 0,
-        subjects: [...defaultSubjects],
+        subjects: [],
         students: [],
       };
       classes.set(row.class_id, classItem);
@@ -118,7 +118,7 @@ export async function GET() {
 
     if (!row.assignment_id || !row.assignment_title) continue;
 
-    const subject = row.assignment_subject || "AL";
+    const subject = normalizeAssignmentSubject(row.assignment_subject);
     if (!classItem.subjects.includes(subject)) classItem.subjects.push(subject);
 
     const targetKey = `${row.class_id}:${row.student_id}:${row.assignment_id}`;

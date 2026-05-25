@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { TeacherLayout } from "@/components/layout/TeacherLayout";
 import { Badge } from "@/components/ui/Badge";
@@ -8,6 +9,7 @@ import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Textarea } from "@/components/ui/Textarea";
+import { ASSIGNMENT_SUBJECTS } from "@/lib/assignmentTypes";
 
 type HomeworkItem = {
   assignmentId: string;
@@ -33,7 +35,7 @@ type ClassOverview = {
   }>;
 };
 
-const subjectOrder = ["전체", "Phonics", "AL", "AR"];
+const subjectOrder = ["전체", ...ASSIGNMENT_SUBJECTS];
 
 export default function ClassesPage() {
   const [classes, setClasses] = useState<ClassOverview[]>([]);
@@ -137,7 +139,7 @@ function ClassCreateModal({
         <form action={onSubmit} className="grid gap-4">
           <label className="grid gap-2 text-sm font-semibold">
             반 이름
-            <Input name="name" required placeholder="예: Phonics A" />
+            <Input name="name" required placeholder="예: RL Basic" />
           </label>
           <label className="grid gap-2 text-sm font-semibold">
             설명
@@ -170,8 +172,13 @@ function ClassStatusCard({
   onSelectSubject: (subject: string) => void;
 }) {
   const subjects = useMemo(
-    () => subjectOrder.filter((subject) => subject === "전체" || classItem.subjects.includes(subject)),
-    [classItem.subjects],
+    () => {
+      const visibleSubjects = new Set(
+        classItem.students.flatMap((student) => [...student.reviewItems, ...student.missingItems].map((item) => item.subject)),
+      );
+      return subjectOrder.filter((subject) => subject === "전체" || visibleSubjects.has(subject));
+    },
+    [classItem.students],
   );
 
   const students = classItem.students.map((student) => ({
@@ -187,7 +194,6 @@ function ClassStatusCard({
           <h2 className="text-xl font-bold">{classItem.class_name}</h2>
           <p className="mt-1 text-sm font-semibold text-slate-500">학생 {classItem.student_count}명</p>
         </div>
-        <Button href={`/teacher/assignments/new?classId=${classItem.class_id}`} variant="secondary">과목 추가</Button>
       </div>
 
       <div className="mt-4 grid grid-cols-3 gap-2 text-xs">
@@ -241,18 +247,15 @@ function StudentHomeworkCard({
   };
 }) {
   return (
-    <article className="rounded-md border border-line bg-slate-50 p-4">
-      <Button
-        href={`/teacher/students/${student.studentId}`}
-        variant="ghost"
-        className="min-h-0 justify-start p-0 text-lg font-bold text-ink hover:text-action"
-      >
-        {student.studentName}
-      </Button>
+    <Link
+      href={`/teacher/students/${student.studentId}`}
+      className="block rounded-md border border-line bg-slate-50 p-4 transition hover:border-action hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-action/30"
+    >
+      <p className="text-lg font-bold text-ink">{student.studentName}</p>
       <StatusRow label="검토요청" tone="review" items={student.reviewItems} emptyLabel="없음" />
       <div className="my-2 border-t border-line" />
       <StatusRow label="미완료" tone="missing" items={student.missingItems} emptyLabel="없음" />
-    </article>
+    </Link>
   );
 }
 
@@ -282,17 +285,16 @@ function StatusRow({
 }
 
 function HomeworkPill({ item, tone }: { item: HomeworkItem; tone: "review" | "missing" }) {
-  const href = item.submissionId ? `/teacher/submissions/${item.submissionId}` : "/teacher/assignments";
   const classes =
     tone === "review"
-      ? "min-h-0 max-w-[245px] justify-start gap-2 rounded-full bg-blue-50 px-3 py-1.5 text-sm font-bold text-action hover:bg-blue-100"
-      : "min-h-0 max-w-[245px] justify-start gap-2 rounded-full bg-red-50 px-3 py-1.5 text-sm font-bold text-red-700 hover:bg-red-100";
+      ? "inline-flex max-w-[245px] items-center gap-2 rounded-full bg-blue-50 px-3 py-1.5 text-sm font-bold text-action"
+      : "inline-flex max-w-[245px] items-center gap-2 rounded-full bg-red-50 px-3 py-1.5 text-sm font-bold text-red-700";
 
   return (
-    <Button href={href} variant="ghost" className={classes}>
+    <span className={classes}>
       <span className="rounded-full bg-white px-2 py-0.5 text-xs font-bold">{item.subject}</span>
       <span className="min-w-0 truncate">{item.title}</span>
-    </Button>
+    </span>
   );
 }
 

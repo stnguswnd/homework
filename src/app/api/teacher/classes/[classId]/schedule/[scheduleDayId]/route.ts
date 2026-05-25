@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 
 import { query } from "@/lib/postgres";
-import { mockTeacherId } from "@/server/teacher/mockTeacher";
+import { requireTeacherSession } from "@/server/teacher/session";
 
 export const runtime = "nodejs";
 
-async function assertSchedule(classId: string, scheduleDayId: string) {
+async function assertSchedule(teacherId: string, classId: string, scheduleDayId: string) {
   const result = await query(
     `
       select d.id
@@ -14,14 +14,17 @@ async function assertSchedule(classId: string, scheduleDayId: string) {
       where d.id = $1 and d.class_id = $2 and c.teacher_id = $3
       limit 1
     `,
-    [scheduleDayId, classId, mockTeacherId],
+    [scheduleDayId, classId, teacherId],
   );
   return Boolean(result.rows[0]);
 }
 
 export async function PATCH(request: Request, context: { params: Promise<{ classId: string; scheduleDayId: string }> }) {
+  const { teacherId } = await requireTeacherSession();
   const { classId, scheduleDayId } = await context.params;
-  if (!(await assertSchedule(classId, scheduleDayId))) return NextResponse.json({ error: "수업일을 찾을 수 없습니다." }, { status: 404 });
+  if (!(await assertSchedule(teacherId, classId, scheduleDayId))) {
+    return NextResponse.json({ error: "수업 일정을 찾을 수 없습니다." }, { status: 404 });
+  }
 
   const body = await request.json().catch(() => ({}));
   await query(
@@ -55,8 +58,11 @@ export async function PATCH(request: Request, context: { params: Promise<{ class
 }
 
 export async function DELETE(_request: Request, context: { params: Promise<{ classId: string; scheduleDayId: string }> }) {
+  const { teacherId } = await requireTeacherSession();
   const { classId, scheduleDayId } = await context.params;
-  if (!(await assertSchedule(classId, scheduleDayId))) return NextResponse.json({ error: "수업일을 찾을 수 없습니다." }, { status: 404 });
+  if (!(await assertSchedule(teacherId, classId, scheduleDayId))) {
+    return NextResponse.json({ error: "수업 일정을 찾을 수 없습니다." }, { status: 404 });
+  }
   await query("delete from class_schedule_days where id = $1 and class_id = $2", [scheduleDayId, classId]);
   return NextResponse.json({ ok: true });
 }

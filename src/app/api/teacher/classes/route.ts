@@ -2,7 +2,7 @@ import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 
 import { query } from "@/lib/postgres";
-import { mockTeacherId } from "@/server/teacher/mockTeacher";
+import { requireTeacherSession } from "@/server/teacher/session";
 
 export const runtime = "nodejs";
 
@@ -20,15 +20,15 @@ function slugify(value: string) {
   const slug = value
     .trim()
     .toLowerCase()
-    .replace(/[^a-z0-9가-힣]+/g, "-")
+    .replace(/[^a-z0-9_-]+/g, "-")
     .replace(/^-+|-+$/g, "");
   return slug || randomUUID().slice(0, 8);
 }
 
-function mapClass(row: ClassRow) {
+function mapClass(row: ClassRow, teacherId: string) {
   return {
     id: row.id,
-    teacherId: mockTeacherId,
+    teacherId,
     name: row.name,
     description: row.description ?? "",
     status: row.status,
@@ -39,6 +39,7 @@ function mapClass(row: ClassRow) {
 }
 
 export async function GET() {
+  const { teacherId } = await requireTeacherSession();
   const result = await query<ClassRow>(
     `
       select
@@ -61,13 +62,14 @@ export async function GET() {
       group by c.id
       order by c.created_at asc
     `,
-    [mockTeacherId],
+    [teacherId],
   );
 
-  return NextResponse.json(result.rows.map(mapClass));
+  return NextResponse.json(result.rows.map((row) => mapClass(row, teacherId)));
 }
 
 export async function POST(request: Request) {
+  const { teacherId } = await requireTeacherSession();
   const body = await request.json().catch(() => null) as {
     name?: string;
     description?: string;
@@ -81,7 +83,7 @@ export async function POST(request: Request) {
 
   const duplicate = await query(
     "select id from classes where teacher_id = $1 and lower(name) = lower($2) limit 1",
-    [mockTeacherId, name],
+    [teacherId, name],
   );
   if (duplicate.rows[0]) {
     return NextResponse.json({ error: "이미 같은 이름의 반이 있습니다." }, { status: 409 });
@@ -96,14 +98,14 @@ export async function POST(request: Request) {
       `,
       [
         `class-${slugify(name)}-${randomUUID().slice(0, 6)}`,
-        mockTeacherId,
+        teacherId,
         name,
         body?.description?.trim() || null,
         body?.status ?? "active",
       ],
     );
 
-    return NextResponse.json(mapClass(result.rows[0]), { status: 201 });
+    return NextResponse.json(mapClass(result.rows[0], teacherId), { status: 201 });
   } catch (error) {
     if ((error as { code?: string }).code === "23505") {
       return NextResponse.json({ error: "이미 같은 이름의 반이 있습니다." }, { status: 409 });

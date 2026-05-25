@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 
 import { query } from "@/lib/postgres";
-import { mockTeacherId } from "@/server/teacher/mockTeacher";
+import { requireTeacherSession } from "@/server/teacher/session";
 
 export const runtime = "nodejs";
 
 export async function GET(_request: Request, context: { params: Promise<{ classId: string }> }) {
+  const { teacherId } = await requireTeacherSession();
   const { classId } = await context.params;
   const result = await query(
     `
@@ -16,7 +17,7 @@ export async function GET(_request: Request, context: { params: Promise<{ classI
       where c.id = $1 and c.teacher_id = $2
       order by s.name
     `,
-    [classId, mockTeacherId],
+    [classId, teacherId],
   );
   return NextResponse.json({ students: result.rows });
 }

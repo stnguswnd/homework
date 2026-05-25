@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { query } from "@/lib/postgres";
-import { mockTeacherId } from "@/server/teacher/mockTeacher";
+import { requireTeacherSession } from "@/server/teacher/session";
 
 export const runtime = "nodejs";
 
@@ -62,6 +62,7 @@ function addDays(date: string, days: number) {
 }
 
 export async function GET(request: NextRequest) {
+  const { teacherId } = await requireTeacherSession();
   const weekStart = request.nextUrl.searchParams.get("weekStart") ?? defaultWeekStart();
   const weekEnd = addDays(weekStart, 6);
   const today = isoDate(new Date());
@@ -88,7 +89,7 @@ export async function GET(request: NextRequest) {
         group by csd.id, c.id
         order by csd.date, csd.start_time nulls last, c.name
       `,
-      [mockTeacherId, weekStart, weekEnd],
+      [teacherId, weekStart, weekEnd],
     ),
     query<AssignmentSummaryRow>(
       `
@@ -103,7 +104,7 @@ export async function GET(request: NextRequest) {
         where coalesce(at.due_at, a.due_at, a.created_at) >= $2::date
           and coalesce(at.due_at, a.due_at, a.created_at) < ($3::date + interval '1 day')
       `,
-      [mockTeacherId, weekStart, weekEnd],
+      [teacherId, weekStart, weekEnd],
     ),
     query<ClassCardRow>(
       `
@@ -141,7 +142,7 @@ export async function GET(request: NextRequest) {
         group by cs.class_id, cs.class_name
         order by cs.class_name
       `,
-      [mockTeacherId, weekStart, weekEnd],
+      [teacherId, weekStart, weekEnd],
     ),
   ]);
 

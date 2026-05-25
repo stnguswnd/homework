@@ -33,11 +33,11 @@ export function SignupForm() {
         <Input name="password" type="password" autoComplete="new-password" minLength={8} placeholder="8자 이상" required />
       </label>
       <label className="grid gap-2 text-sm font-semibold text-slate-700">
-        학생 코드
-        <Input name="studentCode" placeholder="학생/부모님 계정만 입력" />
+        학생 로그인 ID
+        <Input name="studentLoginId" placeholder="학생/부모님 계정만 입력" />
       </label>
       <p className="text-xs leading-relaxed text-slate-500">
-        학생과 부모님은 강사가 먼저 학생을 등록한 뒤 발급된 학생 코드로 가입합니다.
+        학생과 부모님은 강사가 먼저 학생을 등록한 뒤 만든 학생 로그인 ID로 가입합니다.
       </p>
       {state.error ? <p className="text-sm font-semibold text-danger">{state.error}</p> : null}
       <Button type="submit" className="min-h-12 text-base" disabled={pending}>

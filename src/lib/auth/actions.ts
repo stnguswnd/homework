@@ -67,7 +67,7 @@ export async function signupAction(_previousState: ActionState, formData: FormDa
   const password = String(formData.get("password") ?? "");
   const displayName = String(formData.get("displayName") ?? "").trim();
   const role = normalizeRole(formData.get("role"));
-  const studentLoginId = String(formData.get("studentCode") ?? "").trim();
+  const studentLoginId = String(formData.get("studentLoginId") ?? "").trim();
 
   if (!username || !password || !displayName || !role) {
     return { error: "필수 항목을 모두 입력해 주세요." };
@@ -78,7 +78,7 @@ export async function signupAction(_previousState: ActionState, formData: FormDa
   }
 
   if ((role === "student" || role === "parent") && !studentLoginId) {
-    return { error: "학생 또는 부모님 계정은 학생 코드를 입력해야 합니다." };
+    return { error: "학생 또는 부모님 계정은 학생 로그인 ID를 입력해야 합니다." };
   }
 
   const client = await postgresPool.connect();
@@ -99,7 +99,7 @@ export async function signupAction(_previousState: ActionState, formData: FormDa
 
       if (!student.rows[0]) {
         await client.query("rollback");
-        return { error: "학생 코드를 찾을 수 없습니다. 강사가 학생을 먼저 등록해야 합니다." };
+        return { error: "학생 로그인 ID를 찾을 수 없습니다. 강사가 학생을 먼저 등록해야 합니다." };
       }
 
       linkedStudentId = student.rows[0].id;

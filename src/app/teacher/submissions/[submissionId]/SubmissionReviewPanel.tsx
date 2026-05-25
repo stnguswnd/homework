@@ -1,16 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
+
 import { AudioPlayer } from "@/components/ui/AudioPlayer";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Textarea } from "@/components/ui/Textarea";
+import { assignmentSubjectLabel, assignmentTypeLabel, normalizeAssignmentType, writingModeLabel, writingUnitLabel } from "@/lib/assignmentTypes";
 import { formatDateTime } from "@/lib/format";
 
 type SubmissionDetail = {
   submissionId: string;
-  student: { id: string; name: string; schoolName?: string; grade?: string };
+  student: { id: string; name: string; schoolName?: string; grade?: string; classNames?: string[] };
   assignment: { id: string; title: string; assignmentType: string };
   items: Array<{
     assignmentItemId: string;
@@ -20,38 +22,67 @@ type SubmissionDetail = {
     recordingUrl?: string;
     recordingDurationSec?: number;
     recordingFileName?: string;
+    writingMode?: string;
+    writingUnit?: string;
+    writingUnitCount?: number;
+    promptText?: string;
+    originalAnswerText?: string;
+    answerText?: string;
+    aiCorrectedText?: string;
+    aiFeedback?: string;
+    aiGrammarNotes?: string;
+    aiExpressionNotes?: string;
   }>;
   status: string;
   submittedAt?: string;
+  dueAt?: string;
+  isLate?: boolean;
   reviewedAt?: string;
   teacherComment?: string;
 };
 
 function statusLabel(status: string) {
-  if (status === "reviewed") return "승인";
-  if (status === "returned") return "반려";
-  if (status === "submitted") return "검토 대기";
+  if (status === "reviewed" || status === "completed") return "완료";
+  if (status === "returned" || status === "rejected") return "미완료";
+  if (status === "submitted" || status === "late") return "검토 대기";
   return status;
+}
+
+function statusTone(status: string) {
+  if (status === "reviewed" || status === "completed") return "green";
+  if (status === "returned" || status === "rejected") return "red";
+  return "blue";
 }
 
 export function SubmissionReviewPanel({ detail }: { detail: SubmissionDetail }) {
   const [comment, setComment] = useState(detail.teacherComment ?? "");
   const [status, setStatus] = useState(detail.status);
+  const [reviewedAt, setReviewedAt] = useState(detail.reviewedAt);
   const [message, setMessage] = useState("");
+  const [pendingStatus, setPendingStatus] = useState<"reviewed" | "returned" | null>(null);
+  const [isPending, startTransition] = useTransition();
+  const assignmentType = normalizeAssignmentType(detail.assignment.assignmentType);
 
-  async function review(nextStatus: "reviewed" | "returned") {
-    const response = await fetch(`/api/teacher/submissions/${detail.submissionId}/review`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: nextStatus, teacherComment: comment }),
+  function review(nextStatus: "reviewed" | "returned") {
+    if (isPending) return;
+    setPendingStatus(nextStatus);
+    setMessage("");
+    startTransition(async () => {
+      const response = await fetch(`/api/teacher/submissions/${detail.submissionId}/review`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: nextStatus, teacherComment: comment }),
+      });
+      const data = await response.json().catch(() => null);
+      setPendingStatus(null);
+      if (!response.ok) {
+        setMessage(data?.error ?? "검토 저장 중 오류가 발생했습니다.");
+        return;
+      }
+      setStatus(nextStatus);
+      setReviewedAt(data?.reviewedAt ?? new Date().toISOString());
+      setMessage(nextStatus === "reviewed" ? "완료 피드백을 저장했습니다." : "미완료 피드백을 저장했습니다.");
     });
-    const data = await response.json().catch(() => null);
-    if (!response.ok) {
-      setMessage(data?.error ?? "피드백 저장에 실패했습니다.");
-      return;
-    }
-    setStatus(nextStatus);
-    setMessage(nextStatus === "reviewed" ? "승인 피드백을 저장했습니다." : "반려 피드백을 저장했습니다.");
   }
 
   return (
@@ -62,39 +93,123 @@ export function SubmissionReviewPanel({ detail }: { detail: SubmissionDetail }) 
           <div>
             <h2 className="text-xl font-bold">{detail.student.name} / {detail.assignment.title}</h2>
             <div className="mt-3 flex flex-wrap gap-2">
-              <Badge tone={status === "reviewed" ? "green" : status === "returned" ? "red" : "blue"}>{statusLabel(status)}</Badge>
-              <Badge tone="blue">{detail.assignment.assignmentType}</Badge>
-              <Badge>{formatDateTime(detail.submittedAt)}</Badge>
+              <Badge tone={statusTone(status)}>{statusLabel(status)}</Badge>
+              {detail.isLate && <Badge tone="yellow">지각 제출</Badge>}
+              <Badge tone="blue">{assignmentSubjectLabel(assignmentType)}</Badge>
+              <Badge tone="green">{assignmentTypeLabel(assignmentType)}</Badge>
+              {detail.student.classNames?.length ? <Badge>{detail.student.classNames.join(", ")}</Badge> : null}
+              <Badge>제출 {formatDateTime(detail.submittedAt)}</Badge>
+              <Badge>마감 {formatDateTime(detail.dueAt)}</Badge>
+              {reviewedAt && <Badge>검토 {formatDateTime(reviewedAt)}</Badge>}
             </div>
           </div>
           <Button href="/teacher/assignments" variant="secondary">숙제 관리로</Button>
         </div>
       </Card>
 
-      {detail.items.map((item) => (
+      {assignmentType === "listening_recording" && <RecordingReview items={detail.items} />}
+      {assignmentType === "listening" && <ListeningReview submittedAt={detail.submittedAt} />}
+      {assignmentType === "writing" && <WritingReview items={detail.items} />}
+
+      <Card>
+        <h3 className="text-lg font-bold">선생님 최종 피드백</h3>
+        <label className="mt-4 grid gap-2 text-sm font-semibold">
+          코멘트
+          <Textarea value={comment} onChange={(event) => setComment(event.target.value)} placeholder="학생에게 전달할 피드백을 입력하세요." />
+        </label>
+        <div className="mt-4 flex flex-wrap justify-end gap-2">
+          <Button
+            variant={status === "returned" ? "danger" : "secondary"}
+            onClick={() => review("returned")}
+            disabled={isPending}
+          >
+            {pendingStatus === "returned" ? "미완료 저장 중..." : status === "returned" ? "미완료 처리됨" : "미완료"}
+          </Button>
+          <Button
+            onClick={() => review("reviewed")}
+            disabled={isPending}
+            variant={status === "reviewed" ? "secondary" : "primary"}
+          >
+            {pendingStatus === "reviewed" ? "완료 저장 중..." : status === "reviewed" ? "완료 처리됨" : "완료"}
+          </Button>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function RecordingReview({ items }: { items: SubmissionDetail["items"] }) {
+  return (
+    <div className="grid gap-4">
+      {items.map((item) => (
         <Card key={item.assignmentItemId}>
-          <h3 className="text-lg font-bold">{item.title ?? "제출 항목"}</h3>
+          <h3 className="text-lg font-bold">{item.title ?? "녹음 제출 항목"}</h3>
           {item.passageText && <p className="mt-4 rounded-md bg-paper p-4 text-lg leading-8">{item.passageText}</p>}
           {item.audioUrl && <div className="mt-4"><p className="mb-2 text-sm font-semibold">원본 음원</p><AudioPlayer src={item.audioUrl} /></div>}
-          {item.recordingUrl && <div className="mt-4"><p className="mb-2 text-sm font-semibold">학생 녹음</p><AudioPlayer src={item.recordingUrl} /></div>}
+          {item.recordingUrl ? (
+            <div className="mt-4"><p className="mb-2 text-sm font-semibold">학생 녹음 파일</p><AudioPlayer src={item.recordingUrl} /></div>
+          ) : (
+            <p className="mt-4 rounded-md bg-yellow-50 p-3 text-sm font-semibold text-yellow-800">녹음 파일을 아직 불러오지 못했습니다.</p>
+          )}
           <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
             <div><dt className="text-slate-500">파일명</dt><dd className="font-semibold">{item.recordingFileName ?? "-"}</dd></div>
             <div><dt className="text-slate-500">길이</dt><dd className="font-semibold">{item.recordingDurationSec ?? "-"}초</dd></div>
           </dl>
         </Card>
       ))}
+    </div>
+  );
+}
 
-      <Card>
-        <h3 className="text-lg font-bold">피드백</h3>
-        <label className="mt-4 grid gap-2 text-sm font-semibold">
-          강사 코멘트
-          <Textarea value={comment} onChange={(event) => setComment(event.target.value)} />
-        </label>
-        <div className="mt-4 flex justify-end gap-2">
-          <Button variant="secondary" onClick={() => review("returned")}>반려</Button>
-          <Button onClick={() => review("reviewed")}>승인</Button>
-        </div>
-      </Card>
+function ListeningReview({ submittedAt }: { submittedAt?: string }) {
+  return (
+    <Card>
+      <h3 className="text-lg font-bold">리스닝 완료 확인</h3>
+      <p className="mt-3 rounded-md bg-green-50 p-4 text-sm font-semibold text-green-800">
+        학생이 음원을 끝까지 듣고 완료 처리했습니다.
+      </p>
+      <p className="mt-3 text-sm text-slate-600">완료 일시: {formatDateTime(submittedAt)}</p>
+    </Card>
+  );
+}
+
+function WritingReview({ items }: { items: SubmissionDetail["items"] }) {
+  return (
+    <div className="grid gap-4">
+      {items.map((item) => (
+        <Card key={item.assignmentItemId}>
+          <div className="flex flex-wrap gap-2">
+            <Badge tone="blue">{writingModeLabel(item.writingMode)}</Badge>
+            <Badge tone="green">{writingUnitLabel(item.writingUnit)}</Badge>
+          </div>
+          {(item.promptText || item.passageText) && (
+            <div className="mt-4 rounded-md bg-paper p-4">
+              <p className="font-bold">주제 / 지시문</p>
+              <p className="mt-2 whitespace-pre-wrap leading-7">{item.promptText || item.passageText}</p>
+            </div>
+          )}
+          <div className="mt-4 grid gap-4 lg:grid-cols-2">
+            <div className="rounded-md border border-line p-4">
+              <p className="font-bold">첫 번째 글</p>
+              <p className="mt-2 whitespace-pre-wrap leading-7 text-slate-700">{item.originalAnswerText ?? item.answerText ?? "-"}</p>
+            </div>
+            <div className="rounded-md border border-blue-100 bg-blue-50 p-4">
+              <p className="font-bold text-action">AI 첨삭문</p>
+              <p className="mt-2 whitespace-pre-wrap leading-7 text-slate-700">{item.aiCorrectedText ?? "-"}</p>
+            </div>
+          </div>
+          <div className="mt-4 rounded-md border border-green-100 bg-green-50 p-4">
+            <p className="font-bold text-green-800">다시 쓴 글</p>
+            <p className="mt-2 whitespace-pre-wrap leading-7 text-slate-700">{item.answerText ?? "-"}</p>
+          </div>
+          <div className="mt-4 rounded-md bg-paper p-4">
+            <p className="font-bold">AI 피드백</p>
+            <p className="mt-2 whitespace-pre-wrap leading-7">{item.aiFeedback ?? "-"}</p>
+            {item.aiGrammarNotes && <p className="mt-3 whitespace-pre-wrap text-sm leading-6"><strong>문법 교정사항</strong><br />{item.aiGrammarNotes}</p>}
+            {item.aiExpressionNotes && <p className="mt-3 whitespace-pre-wrap text-sm leading-6"><strong>알면 좋은 표현</strong><br />{item.aiExpressionNotes}</p>}
+          </div>
+        </Card>
+      ))}
     </div>
   );
 }

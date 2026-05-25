@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { query } from "@/lib/postgres";
-import { mockTeacherId } from "@/server/teacher/mockTeacher";
+import { requireTeacherSession } from "@/server/teacher/session";
 
 export const runtime = "nodejs";
 
@@ -33,8 +33,9 @@ function toDate(value: string | Date) {
 }
 
 export async function GET(_request: Request, { params }: Params) {
+  const { teacherId } = await requireTeacherSession();
   const { studentId } = await params;
-  const student = await query("select id from students where id = $1 and teacher_id = $2", [studentId, mockTeacherId]);
+  const student = await query("select id from students where id = $1 and teacher_id = $2", [studentId, teacherId]);
   if (!student.rows[0]) return NextResponse.json({ error: "학생을 찾을 수 없습니다." }, { status: 404 });
 
   const result = await query<HistoryRow>(
@@ -45,7 +46,7 @@ export async function GET(_request: Request, { params }: Params) {
         coalesce(at.submitted_at, at.due_at, a.due_at, a.created_at)::date as date,
         a.title as assignment_title,
         a.assignment_type,
-        string_agg(distinct c.name, ', ' order by c.name) as class_name,
+        c.name as class_name,
         case
           when sub.id is not null then 'submitted'
           when coalesce(at.due_at, a.due_at) is not null and coalesce(at.due_at, a.due_at) < now() then 'late'
@@ -62,13 +63,12 @@ export async function GET(_request: Request, { params }: Params) {
       join assignments a on a.id = at.assignment_id and a.teacher_id = $2
       left join submissions sub on sub.assignment_id = a.id and sub.student_id = at.student_id
       left join teacher_feedback tf on tf.submission_id = sub.id
-      left join class_memberships cm on cm.student_id = at.student_id
-      left join classes c on c.id = cm.class_id and c.teacher_id = a.teacher_id
+      left join classes c on c.id = at.class_id and c.teacher_id = a.teacher_id
       where at.student_id = $1
-      group by at.assignment_id, at.student_id, at.submitted_at, at.due_at, a.due_at, a.created_at, a.title, a.assignment_type, sub.id, sub.status, at.reviewed, tf.id, tf.score
+      group by at.assignment_id, at.student_id, at.submitted_at, at.due_at, a.due_at, a.created_at, a.title, a.assignment_type, c.name, sub.id, sub.status, at.reviewed, tf.id, tf.score
       order by date desc, a.title
     `,
-    [studentId, mockTeacherId],
+    [studentId, teacherId],
   );
 
   return NextResponse.json(result.rows.map((row) => ({

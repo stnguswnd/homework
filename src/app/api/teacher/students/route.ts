@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 
 import { postgresPool, query } from "@/lib/postgres";
 import { hashStudentPassword } from "@/server/auth/studentPassword";
-import { mockTeacherId } from "@/server/teacher/mockTeacher";
+import { requireTeacherSession } from "@/server/teacher/session";
 
 export const runtime = "nodejs";
 
@@ -40,7 +40,7 @@ function mapStudent(row: StudentRow) {
   };
 }
 
-async function validateClassIds(client: { query: typeof postgresPool.query }, classIds: string[]) {
+async function validateClassIds(client: { query: typeof postgresPool.query }, teacherId: string, classIds: string[]) {
   const uniqueClassIds = Array.from(new Set(classIds.filter(Boolean)));
   if (uniqueClassIds.length === 0) {
     return { valid: false, classIds: uniqueClassIds, error: "학생을 배정할 반을 최소 1개 선택해주세요." };
@@ -48,7 +48,7 @@ async function validateClassIds(client: { query: typeof postgresPool.query }, cl
 
   const result = await client.query<{ id: string }>(
     "select id from classes where teacher_id = $1 and status = 'active' and id = any($2::text[])",
-    [mockTeacherId, uniqueClassIds],
+    [teacherId, uniqueClassIds],
   );
   if (result.rows.length !== uniqueClassIds.length) {
     return { valid: false, classIds: uniqueClassIds, error: "선택한 반 중 유효하지 않은 반이 있습니다." };
@@ -57,6 +57,7 @@ async function validateClassIds(client: { query: typeof postgresPool.query }, cl
 }
 
 export async function GET() {
+  const { teacherId } = await requireTeacherSession();
   const result = await query<StudentRow>(
     `
       select
@@ -79,13 +80,14 @@ export async function GET() {
       group by s.id
       order by s.created_at desc
     `,
-    [mockTeacherId],
+    [teacherId],
   );
 
   return NextResponse.json(result.rows.map(mapStudent));
 }
 
 export async function POST(request: Request) {
+  const { teacherId } = await requireTeacherSession();
   const body = await request.json().catch(() => null) as {
     name?: string;
     studentLoginId?: string;
@@ -111,7 +113,7 @@ export async function POST(request: Request) {
   try {
     await client.query("begin");
 
-    const classValidation = await validateClassIds(client, classIds);
+    const classValidation = await validateClassIds(client, teacherId, classIds);
     if (!classValidation.valid) {
       await client.query("rollback");
       return NextResponse.json({ error: classValidation.error }, { status: 400 });
@@ -119,7 +121,7 @@ export async function POST(request: Request) {
 
     const duplicate = await client.query(
       "select id from students where teacher_id = $1 and student_login_id = $2 limit 1",
-      [mockTeacherId, studentLoginId],
+      [teacherId, studentLoginId],
     );
 
     if (duplicate.rows[0]) {
@@ -132,14 +134,14 @@ export async function POST(request: Request) {
     await client.query(
       `
         insert into students (
-          id, teacher_id, student_login_id, student_code, password_hash,
+          id, teacher_id, student_login_id, password_hash,
           name, school_name, grade, avatar_key, memo, status
         )
-        values ($1, $2, $3, $3, $4, $5, $6, $7, 'robot', $8, 'active')
+        values ($1, $2, $3, $4, $5, $6, $7, 'robot', $8, 'active')
       `,
       [
         studentId,
-        mockTeacherId,
+        teacherId,
         studentLoginId,
         passwordHash,
         name,
@@ -158,7 +160,7 @@ export async function POST(request: Request) {
           where c.id = $3 and c.teacher_id = $4
           on conflict (class_id, student_id) do nothing
         `,
-        [`membership-${randomUUID()}`, studentId, classId, mockTeacherId],
+        [`membership-${randomUUID()}`, studentId, classId, teacherId],
       );
     }
 
@@ -183,7 +185,7 @@ export async function POST(request: Request) {
         where s.id = $1 and s.teacher_id = $2
         group by s.id
       `,
-      [studentId, mockTeacherId],
+      [studentId, teacherId],
     );
 
     await client.query("commit");

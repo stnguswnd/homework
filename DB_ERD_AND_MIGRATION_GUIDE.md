@@ -112,7 +112,6 @@ erDiagram
 - `app_user_id uuid unique references app_users(id) on delete set null`
 - `teacher_id text not null references teachers(id) on delete cascade`
 - `student_login_id text not null`
-- `student_code text`
 - `password_hash text not null`
 - `name text not null`
 - `school_name text`
@@ -127,7 +126,6 @@ erDiagram
 제약:
 
 - `unique (teacher_id, student_login_id)`
-- legacy 호환용 `student_code`는 남아 있지만 의미는 학생 로그인 아이디로 통일
 
 보안:
 
@@ -299,11 +297,13 @@ erDiagram
 - `assignment_id text not null references assignments(id) on delete cascade`
 - `class_id text references classes(id) on delete cascade`
 - `student_id text not null references students(id) on delete cascade`
-- `status text default 'assigned' check in ('assigned', 'submitted', 'late', 'excused')`
+- `status text default 'assigned' check in ('assigned', 'submitted', 'late', 'excused', 'cancelled')`
 - `due_at timestamptz`
 - `submitted_at timestamptz`
 - `reviewed boolean default false`
 - `feedback text`
+- `cancelled_at timestamptz`
+- `cancelled_by text references teachers(id) on delete set null`
 - `created_at timestamptz default now()`
 - `updated_at timestamptz default now()`
 
@@ -317,6 +317,10 @@ erDiagram
 - `targetMode = all`인데 반에 active 학생이 없으면 400 반환
 - `targetMode = partial`인데 학생 선택이 없으면 400 반환
 - 반별 요약은 `assignment_targets.class_id` 기준으로 계산
+- 학생별 마감일 변경은 원본 `assignments.due_at`이 아니라 `assignment_targets.due_at`만 수정
+- 배정 취소는 물리 삭제하지 않고 `assignment_targets.status = 'cancelled'`로 처리
+- 취소된 배정은 학생 화면과 기본 제출 현황에서 제외
+- 제출 완료 학생은 배정 취소 불가
 
 주의:
 
@@ -350,6 +354,39 @@ erDiagram
 - 반려: `submissions.status = 'returned'`
 - 강사 코멘트: `submissions.teacher_comment`
 - 리뷰 시 `assignment_targets.reviewed`, `assignment_targets.feedback`, `teacher_feedback.comment`도 함께 갱신
+
+배정 취소 정책:
+
+- 제출 전: `assignment_targets.status = 'cancelled'`로 soft cancel 가능
+- 제출 후: 취소 불가
+- 제출 기록은 `submissions`, `submission_items`에서 보존
+- 프론트에서 막더라도 서버 API가 제출 완료 target을 다시 검증하고 취소하지 않음
+
+### assignment_target_status_view
+
+배정 관리 화면과 향후 반 상세 확장을 위한 조회용 view입니다.
+
+제공 필드:
+
+- `target_id`
+- `assignment_id`
+- `class_id`
+- `class_name`
+- `student_id`
+- `student_name`
+- `target_status`
+- `due_at`
+- `submission_id`
+- `submission_status`
+- `computed_submission_status`
+- `cancellable`
+
+계산 기준:
+
+- target이 `cancelled`이면 `computed_submission_status = 'cancelled'`
+- submission이 있거나 target status가 `submitted`, `late`이면 `submitted`
+- 그 외에는 `not_submitted`
+- `cancellable = true`는 미제출 active target만 해당
 
 ### submission_items
 
@@ -433,7 +470,6 @@ erDiagram
 포함 필드:
 
 - `student_login_id`
-- legacy 호환용 `student_code`
 - `class_ids`
 - `class_names`
 - 학생 기본 정보
@@ -442,11 +478,11 @@ erDiagram
 
 학생 상세의 학습 이력용 view입니다.
 
-현재 주의:
+현재 기준:
 
-- 오래된 view 정의는 `assignments.class_id` 기반 join을 포함합니다.
-- 실제 학생 이력 API는 최신 구조에 맞게 `assignment_targets` 기준으로 조회합니다.
-- Supabase migration 시 view도 `assignment_targets` 기준으로 재작성하는 것을 권장합니다.
+- 학생 이력은 `assignment_targets.student_id` 기준입니다.
+- 반 이름은 `assignment_targets.class_id` 기준입니다.
+- 제출/검토 상태는 `submissions`, `teacher_feedback`, `assignment_targets.reviewed`를 함께 봅니다.
 
 ## 5. Storage 설계
 
@@ -457,7 +493,7 @@ erDiagram
 
 코드 기본값:
 
-- `NEXT_PUBLIC_SUPABASE_IMAGE_BUCKET` 없으면 `homework-images`
+- `NEXT_PUBLIC_SUPABASE_IMAGE_BUCKET` 없으면 `homework-image`
 - `NEXT_PUBLIC_SUPABASE_AUDIO_BUCKET` 없으면 `homework-audio`
 
 현재 프로젝트에서는 `.env`, `.env.local`에 아래처럼 설정되어 있습니다.
@@ -837,11 +873,18 @@ mockTeacherId = "teacher-1"
 - signed URL 만료는 10분~1시간 권장
 - public URL fallback은 개발 편의용으로만 유지
 
-### Step 9. Backfill 체크리스트
+### Step 9. Legacy Backfill 체크리스트
+
+신규 Supabase DB에는 legacy 보정 SQL을 실행하지 않습니다. 기존 로컬/테스트 DB에 과거 구조가 남아 있는 경우에만 아래 파일을 순서대로 실행합니다.
+
+```bash
+psql "$DATABASE_URL" -f database/legacy-backfill.sql
+psql "$DATABASE_URL" -f database/drop-legacy.sql
+```
 
 기존 데이터가 있는 경우 확인:
 
-- `students.student_code -> students.student_login_id`
+- legacy student login column -> `students.student_login_id`
 - `students.password -> students.password_hash`
 - `assignment_templates -> assignments + assignment_items`
 - `assignments.assignment_subject` 채우기
@@ -900,9 +943,9 @@ where at.assignment_id = sub.assignment_id
 
 - Teacher auth는 아직 일부 API에서 `teacher-1` mock 고정
 - 일부 오래된 mock/static 파일이 남아 있음
-- `student_learning_history_view`는 최신 `assignment_targets` 중심 구조와 완전히 일치하도록 재작성 권장
+- `student_learning_history_view`는 `assignment_targets` 중심 구조로 재작성됨
 - `assignment_targets`와 `submissions`의 unique 제약 때문에 같은 학생에게 같은 assignment source를 여러 반 기준으로 중복 배정하는 시나리오는 아직 제한됨
-- `NEXT_PUBLIC_SUPABASE_IMAGE_BUCKET` 기본값은 `homework-images`지만 실제 프로젝트 env는 `homework-image`이므로, 새 환경 구성 시 env 설정 누락에 주의
+- `NEXT_PUBLIC_SUPABASE_IMAGE_BUCKET` 기본값과 실제 프로젝트 env는 모두 `homework-image`
 
 ## 11. 다음 DB 개선 권장
 

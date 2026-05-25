@@ -7,21 +7,22 @@ export function StudentLayout({ children, title }: { children: ReactNode; title:
   return (
     <div className="min-h-screen bg-white">
       <header className="sticky top-0 z-10 border-b border-line bg-white/95 px-4 py-3">
-        <div className="mx-auto flex max-w-3xl items-center justify-between">
+        <div className="mx-auto flex max-w-7xl items-center justify-between">
           <Link href="/student/home" className="font-bold">
             Student Homework
           </Link>
-          <div className="flex items-center gap-3">
-            <span className="hidden text-sm text-slate-500 sm:inline">{title}</span>
+          <div className="flex items-center gap-2 sm:gap-3">
+            <Link href="/student/home" className="rounded-md px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+              과제 목록
+            </Link>
+            <span className="hidden text-sm text-slate-500 md:inline">{title}</span>
             <form action={logoutAction}>
-              <button className="rounded-md border border-line px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-                로그아웃
-              </button>
+              <button className="rounded-md border border-line px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">로그아웃</button>
             </form>
           </div>
         </div>
       </header>
-      <main className="mx-auto max-w-3xl px-4 py-6">{children}</main>
+      <main className="mx-auto max-w-7xl px-4 py-6">{children}</main>
     </div>
   );
 }

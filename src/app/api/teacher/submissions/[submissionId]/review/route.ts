@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 
 import { postgresPool } from "@/lib/postgres";
-import { mockTeacherId } from "@/server/teacher/mockTeacher";
+import { requireTeacherSession } from "@/server/teacher/session";
 
 export const runtime = "nodejs";
 
 export async function PATCH(request: Request, context: { params: Promise<{ submissionId: string }> }) {
+  const { teacherId } = await requireTeacherSession();
   const { submissionId } = await context.params;
   const body = await request.json().catch(() => ({}));
   const status = body.status === "returned" ? "returned" : "reviewed";
@@ -28,7 +29,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ submi
         where sub.id = $1 and sub.assignment_id = a.id and a.teacher_id = $2
         returning sub.id, sub.assignment_id, sub.student_id, sub.assignment_target_id
       `,
-      [submissionId, mockTeacherId, status, comment],
+      [submissionId, teacherId, status, comment],
     );
 
     const submission = result.rows[0];
@@ -51,7 +52,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ submi
           where a.id = at.assignment_id and a.teacher_id = $4
         )
       `,
-      [submission.assignment_target_id, submission.assignment_id, submission.student_id, mockTeacherId, comment],
+      [submission.assignment_target_id, submission.assignment_id, submission.student_id, teacherId, comment],
     );
 
     await client.query(
@@ -64,7 +65,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ submi
           teacher_id = excluded.teacher_id,
           updated_at = now()
       `,
-      [`feedback-${submissionId}`, submissionId, mockTeacherId, comment],
+      [`feedback-${submissionId}`, submissionId, teacherId, comment],
     );
 
     await client.query("commit");
@@ -74,6 +75,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ submi
       submissionId,
       status,
       teacherComment: comment,
+      reviewedAt: new Date().toISOString(),
     });
   } catch (error) {
     await client.query("rollback").catch(() => undefined);

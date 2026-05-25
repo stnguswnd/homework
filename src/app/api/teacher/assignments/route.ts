@@ -5,7 +5,8 @@ import type { PoolClient } from "pg";
 import { postgresPool, query } from "@/lib/postgres";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 import { storageBuckets } from "@/lib/supabase/storage";
-import { mockTeacherId } from "@/server/teacher/mockTeacher";
+import { requireTeacherSession } from "@/server/teacher/session";
+import { assignmentSubjectForType, isSupportedAssignmentType, itemTypeForAssignmentType, normalizeAssignmentSubject, normalizeAssignmentType } from "@/lib/assignmentTypes";
 
 export const runtime = "nodejs";
 
@@ -28,6 +29,13 @@ type AssignmentRow = {
   audio_file_name: string | null;
   min_recording_sec: number | null;
   max_recording_sec: number | null;
+  writing_mode: string | null;
+  writing_unit: string | null;
+  writing_unit_count: number | null;
+  prompt_text: string | null;
+  writing_instructions: string | null;
+  writing_hint: string | null;
+  writing_example: string | null;
   updated_at: Date;
 };
 
@@ -63,6 +71,7 @@ type AssignmentListRow = {
     dueAt: string | null;
     targetCount: number;
     submittedCount: number;
+    studentNames: string[];
   }> | null;
   target_count: number;
   submitted_count: number;
@@ -72,15 +81,6 @@ type AssignmentListRow = {
 
 function safeFileName(fileName: string) {
   return fileName.replace(/[^a-zA-Z0-9._-]/g, "_") || `${randomUUID()}`;
-}
-
-function itemTypeFor(type: string) {
-  if (["listening_recording", "image_speaking", "sentence_shadowing", "free_speaking"].includes(type)) {
-    return type;
-  }
-  if (type === "writing") return "writing_prompt";
-  if (type === "quiz") return "quiz_question";
-  return "listening_recording";
 }
 
 async function signedUrl(bucket: string, path: string | null) {
@@ -95,15 +95,15 @@ async function mapAssignment(row: AssignmentRow) {
     id: row.id,
     title: row.title,
     description: row.description ?? "",
-    type: row.assignment_type,
-    subject: row.assignment_subject,
+    type: normalizeAssignmentType(row.assignment_type),
+    subject: normalizeAssignmentSubject(row.assignment_subject),
     status: row.status,
     imageUrl: (await signedUrl(storageBuckets.images, row.image_storage_path)) || row.image_url || "",
     imageStoragePath: row.image_storage_path ?? undefined,
     imageFileName: row.image_file_name ?? undefined,
     item: {
       id: row.item_id,
-      type: row.item_type,
+      type: itemTypeForAssignmentType(row.assignment_type),
       title: row.passage_title ?? "",
       passageText: row.passage_text ?? "",
       audioUrl: (await signedUrl(storageBuckets.audio, row.audio_storage_path)) || row.audio_url || "",
@@ -111,12 +111,19 @@ async function mapAssignment(row: AssignmentRow) {
       audioFileName: row.audio_file_name ?? "",
       minRecordingSec: String(row.min_recording_sec ?? 0),
       maxRecordingSec: String(row.max_recording_sec ?? 120),
+      writingMode: row.writing_mode ?? undefined,
+      writingUnit: row.writing_unit ?? undefined,
+      writingUnitCount: row.writing_unit_count ?? 4,
+      promptText: row.prompt_text ?? "",
+      writingInstructions: row.writing_instructions ?? "",
+      writingHint: row.writing_hint ?? "",
+      writingExample: row.writing_example ?? "",
     },
     updatedAt: row.updated_at.toISOString(),
   };
 }
 
-async function getAssignmentRow(id: string) {
+async function getAssignmentRow(id: string, teacherId: string) {
   const result = await query<AssignmentRow>(
     `
       select
@@ -138,19 +145,27 @@ async function getAssignmentRow(id: string) {
         ai.audio_file_name,
         ai.min_recording_sec,
         ai.max_recording_sec,
+        ai.writing_mode,
+        ai.writing_unit,
+        ai.writing_unit_count,
+        ai.prompt_text,
+        ai.writing_instructions,
+        ai.writing_hint,
+        ai.writing_example,
         a.updated_at
       from assignments a
       left join assignment_items ai on ai.assignment_id = a.id and ai.order_index = 1
       where a.id = $1 and a.teacher_id = $2
       limit 1
     `,
-    [id, mockTeacherId],
+    [id, teacherId],
   );
 
   return result.rows[0] ?? null;
 }
 
 export async function GET(request: Request) {
+  const { teacherId } = await requireTeacherSession();
   const { searchParams } = new URL(request.url);
   const id = searchParams.get("id")?.trim();
 
@@ -165,10 +180,17 @@ export async function GET(request: Request) {
             count(distinct at.student_id)::int as target_count,
             count(distinct at.student_id) filter (where at.status in ('submitted', 'late'))::int as submitted_count,
             min(at.due_at) as due_at
+            ,
+            coalesce(
+              array_remove(array_agg(distinct s.name order by s.name), null),
+              array[]::text[]
+            ) as student_names
           from assignment_targets at
           join assignments a on a.id = at.assignment_id
           left join classes c on c.id = at.class_id and c.teacher_id = a.teacher_id
+          left join students s on s.id = at.student_id and s.teacher_id = a.teacher_id
           where a.teacher_id = $1
+            and at.status <> 'cancelled'
           group by at.assignment_id, at.class_id, c.name
         )
         select
@@ -186,7 +208,8 @@ export async function GET(request: Request) {
                 'className', cs.class_name,
                 'dueAt', cs.due_at,
                 'targetCount', cs.target_count,
-                'submittedCount', cs.submitted_count
+                'submittedCount', cs.submitted_count,
+                'studentNames', cs.student_names
               )
               order by cs.class_name
             ) filter (where cs.class_id is not null),
@@ -202,7 +225,7 @@ export async function GET(request: Request) {
         group by a.id
         order by a.updated_at desc
       `,
-      [mockTeacherId],
+      [teacherId],
     );
 
     return NextResponse.json({
@@ -210,8 +233,8 @@ export async function GET(request: Request) {
         id: row.id,
         title: row.title,
         description: row.description ?? "",
-        assignmentType: row.assignment_type,
-        assignmentSubject: row.assignment_subject,
+        assignmentType: normalizeAssignmentType(row.assignment_type),
+        assignmentSubject: normalizeAssignmentSubject(row.assignment_subject),
         status: row.status,
         classNames: row.class_names ?? [],
         classSummaries: row.class_summaries ?? [],
@@ -224,21 +247,34 @@ export async function GET(request: Request) {
     });
   }
 
-  const row = await getAssignmentRow(id);
+  const row = await getAssignmentRow(id, teacherId);
   return NextResponse.json({ assignment: row ? await mapAssignment(row) : null });
 }
 
 export async function POST(request: Request) {
+  const { teacherId } = await requireTeacherSession();
   const formData = await request.formData();
   const id = String(formData.get("id") ?? "").trim() || `assignment-${randomUUID()}`;
   const title = String(formData.get("title") ?? "").trim();
-  const type = String(formData.get("type") ?? "listening_recording").trim();
-  const subject = String(formData.get("subject") ?? subjectForType(type)).trim();
+  const rawType = String(formData.get("type") ?? "listening_recording").trim();
+  if (!isSupportedAssignmentType(rawType)) {
+    return NextResponse.json({ error: "지원하지 않는 숙제 유형입니다." }, { status: 400 });
+  }
+  const type = rawType;
+  const subject = normalizeAssignmentSubject(String(formData.get("subject") ?? assignmentSubjectForType()).trim());
   const description = String(formData.get("description") ?? "").trim();
   const passageTitle = String(formData.get("passageTitle") ?? "").trim();
-  const passageText = String(formData.get("passageText") ?? "").trim();
+  const rawPassageText = String(formData.get("passageText") ?? "").trim();
   const minRecordingSec = Number(formData.get("minRecordingSec") ?? 0);
   const maxRecordingSec = Number(formData.get("maxRecordingSec") ?? 120);
+  const writingMode = String(formData.get("writingMode") ?? "").trim() || null;
+  const writingUnit = String(formData.get("writingUnit") ?? "").trim() || null;
+  const writingUnitCount = Number(formData.get("writingUnitCount") ?? 4);
+  const promptText = String(formData.get("promptText") ?? "").trim();
+  const writingInstructions = String(formData.get("writingInstructions") ?? "").trim();
+  const writingHint = String(formData.get("writingHint") ?? "").trim();
+  const writingExample = String(formData.get("writingExample") ?? "").trim();
+  const passageText = type === "writing" && promptText ? promptText : rawPassageText;
   const imageFile = formData.get("imageFile");
   const audioFile = formData.get("audioFile");
   const targetAssignments = parseTargetAssignments(formData.get("assignments"));
@@ -313,7 +349,7 @@ export async function POST(request: Request) {
           where c.id = $1 and c.teacher_id = $2 and c.status = 'active'
           group by c.id
         `,
-        [targetAssignment.classId, mockTeacherId],
+        [targetAssignment.classId, teacherId],
       );
       const classRow = classResult.rows[0];
       if (!classRow) {
@@ -351,16 +387,18 @@ export async function POST(request: Request) {
           status = excluded.status,
           updated_at = now()
       `,
-      [id, mockTeacherId, assignmentClassId, title, description || null, type, subject || subjectForType(type), imageUrl, imageStoragePath, imageFileName, assignmentDueAt, assignmentStatus],
+      [id, teacherId, assignmentClassId, title, description || null, type, subject, imageUrl, imageStoragePath, imageFileName, assignmentDueAt, assignmentStatus],
     );
 
     await client.query(
       `
         insert into assignment_items (
           id, assignment_id, item_type, title, passage_text, audio_url, audio_storage_path,
-          audio_file_name, order_index, min_recording_sec, max_recording_sec
+          audio_file_name, order_index, min_recording_sec, max_recording_sec,
+          writing_mode, writing_unit, writing_unit_count, prompt_text,
+          writing_instructions, writing_hint, writing_example
         )
-        values ($1, $2, $3, $4, $5, $6, $7, $8, 1, $9, $10)
+        values ($1, $2, $3, $4, $5, $6, $7, $8, 1, $9, $10, $11, $12, $13, $14, $15, $16, $17)
         on conflict (assignment_id, order_index)
         do update set
           item_type = excluded.item_type,
@@ -371,12 +409,19 @@ export async function POST(request: Request) {
           audio_file_name = coalesce(excluded.audio_file_name, assignment_items.audio_file_name),
           min_recording_sec = excluded.min_recording_sec,
           max_recording_sec = excluded.max_recording_sec,
+          writing_mode = excluded.writing_mode,
+          writing_unit = excluded.writing_unit,
+          writing_unit_count = excluded.writing_unit_count,
+          prompt_text = excluded.prompt_text,
+          writing_instructions = excluded.writing_instructions,
+          writing_hint = excluded.writing_hint,
+          writing_example = excluded.writing_example,
           updated_at = now()
       `,
       [
         `${id}-item-1`,
         id,
-        itemTypeFor(type),
+        itemTypeForAssignmentType(type),
         passageTitle || null,
         passageText,
         audioUrl,
@@ -384,12 +429,19 @@ export async function POST(request: Request) {
         audioFileName,
         Number.isFinite(minRecordingSec) ? minRecordingSec : 0,
         Number.isFinite(maxRecordingSec) ? maxRecordingSec : 120,
+        type === "writing" && (writingMode === "picture_description" || writingMode === "topic_diary") ? writingMode : null,
+        type === "writing" && (writingUnit === "paragraphs" || writingUnit === "sentences") ? writingUnit : null,
+        type === "writing" && Number.isFinite(writingUnitCount) ? writingUnitCount : 4,
+        type === "writing" ? promptText || null : null,
+        type === "writing" ? writingInstructions || null : null,
+        type === "writing" ? writingHint || null : null,
+        type === "writing" ? writingExample || null : null,
       ],
     );
 
     for (const targetAssignment of targetAssignments) {
       const dueAt = toDueAt(targetAssignment.dueDate, targetAssignment.dueTime);
-      const students = await findTargetStudents(client, targetAssignment);
+      const students = await findTargetStudents(client, teacherId, targetAssignment);
       if (students.length === 0) {
         await client.query("rollback");
         return NextResponse.json({ error: "배정 대상 학생을 찾을 수 없습니다." }, { status: 400 });
@@ -409,6 +461,8 @@ export async function POST(request: Request) {
                 when assignment_targets.status in ('submitted', 'late') then assignment_targets.status
                 else 'assigned'
               end,
+              cancelled_at = null,
+              cancelled_by = null,
               updated_at = now()
           `,
           [`target-${randomUUID()}`, id, targetAssignment.classId, student.id, dueAt],
@@ -426,7 +480,7 @@ export async function POST(request: Request) {
     client.release();
   }
 
-  const row = await getAssignmentRow(id);
+  const row = await getAssignmentRow(id, teacherId);
   return NextResponse.json({
     assignment: row ? await mapAssignment(row) : null,
     uploaded: {
@@ -436,12 +490,6 @@ export async function POST(request: Request) {
     assignedCount,
     classCounts,
   });
-}
-
-function subjectForType(type: string) {
-  if (type === "vocabulary") return "Phonics";
-  if (type === "sentence_shadowing" || type === "image_speaking") return "AR";
-  return "AL";
 }
 
 function parseTargetAssignments(value: FormDataEntryValue | null): AssignmentTargetInput[] {
@@ -462,6 +510,7 @@ function toDueAt(date: string, time: string) {
 
 async function findTargetStudents(
   client: PoolClient,
+  teacherId: string,
   target: AssignmentTargetInput,
 ) {
   if (target.targetMode === "partial" && target.selectedStudents.length > 0) {
@@ -475,7 +524,7 @@ async function findTargetStudents(
           and cm.class_id = $2
           and s.id = any($3::text[])
       `,
-      [mockTeacherId, target.classId, target.selectedStudents],
+      [teacherId, target.classId, target.selectedStudents],
     );
     return result.rows;
   }
@@ -489,7 +538,7 @@ async function findTargetStudents(
         and s.status = 'active'
         and cm.class_id = $2
     `,
-    [mockTeacherId, target.classId],
+    [teacherId, target.classId],
   );
   return result.rows;
 }

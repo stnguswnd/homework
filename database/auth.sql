@@ -1,3 +1,7 @@
+-- New Supabase database schema.
+-- This file is safe to paste into the Supabase SQL Editor for a fresh project.
+-- Legacy backfill/drop logic lives in database/legacy-backfill.sql and database/drop-legacy.sql.
+
 create table if not exists app_users (
   id uuid primary key,
   username text not null unique,
@@ -8,9 +12,6 @@ create table if not exists app_users (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-
-alter table app_users add column if not exists updated_at timestamptz not null default now();
-alter table app_users add column if not exists linked_student_id text;
 
 create table if not exists auth_sessions (
   id text primary key,
@@ -33,9 +34,8 @@ create table if not exists students (
   id text primary key,
   app_user_id uuid unique references app_users(id) on delete set null,
   teacher_id text not null references teachers(id) on delete cascade,
-  student_login_id text,
-  student_code text,
-  password_hash text,
+  student_login_id text not null,
+  password_hash text not null,
   name text not null,
   school_name text,
   grade text,
@@ -44,46 +44,12 @@ create table if not exists students (
   parent_id text,
   status text not null default 'active' check (status in ('active', 'inactive')),
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  unique (teacher_id, student_login_id)
 );
-
-alter table students add column if not exists student_login_id text;
-alter table students add column if not exists password_hash text;
-alter table students add column if not exists student_code text;
-alter table students alter column teacher_id set not null;
-alter table students alter column avatar_key set default 'robot';
-alter table students alter column status set default 'active';
-
-update students
-set student_login_id = coalesce(student_login_id, student_code)
-where student_login_id is null;
-
-update students
-set password_hash = 'legacy-unusable'
-where password_hash is null;
-
-alter table students alter column student_login_id set not null;
-alter table students alter column password_hash set not null;
-
-alter table students drop constraint if exists students_student_code_key;
-alter table students drop constraint if exists students_teacher_student_login_unique;
-alter table students add constraint students_teacher_student_login_unique unique (teacher_id, student_login_id);
-
-create unique index if not exists students_teacher_student_code_unique
-  on students(teacher_id, student_code)
-  where student_code is not null;
 
 alter table app_users
   drop constraint if exists app_users_linked_student_id_fkey;
-
-update app_users
-set linked_student_id = null
-where linked_student_id is not null
-  and not exists (
-    select 1
-    from students
-    where students.id = app_users.linked_student_id
-  );
 
 alter table app_users
   add constraint app_users_linked_student_id_fkey
@@ -98,9 +64,6 @@ create table if not exists classes (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-
-create unique index if not exists classes_teacher_name_unique
-  on classes(teacher_id, lower(name));
 
 create table if not exists class_memberships (
   id text primary key,
@@ -136,16 +99,11 @@ create table if not exists assignments (
   assignment_type text not null check (
     assignment_type in (
       'listening_recording',
-      'image_speaking',
-      'sentence_shadowing',
-      'free_speaking',
-      'writing',
-      'quiz',
-      'vocabulary',
-      'general'
+      'listening',
+      'writing'
     )
   ),
-  assignment_subject text not null default 'AL',
+  assignment_subject text not null default 'Phonics',
   image_url text,
   image_storage_path text,
   image_file_name text,
@@ -156,24 +114,18 @@ create table if not exists assignments (
   updated_at timestamptz not null default now()
 );
 
-alter table assignments alter column class_id drop not null;
-alter table assignments add column if not exists image_file_name text;
-alter table assignments add column if not exists assignment_subject text not null default 'AL';
-
-update assignments
-set assignment_subject = case
-  when assignment_type = 'vocabulary' then 'Phonics'
-  when assignment_type in ('sentence_shadowing', 'image_speaking') then 'AR'
-  else 'AL'
-end
-where assignment_subject is null or assignment_subject = 'AL';
-
 create table if not exists assignment_items (
   id text primary key,
   assignment_id text not null references assignments(id) on delete cascade,
-  item_type text not null check (item_type in ('listening_recording', 'image_speaking', 'sentence_shadowing', 'free_speaking', 'writing_prompt', 'quiz_question')),
+  item_type text not null check (
+    item_type in (
+      'listening_recording',
+      'listening',
+      'writing_prompt'
+    )
+  ),
   title text,
-  passage_text text not null,
+  passage_text text,
   audio_url text,
   audio_file_name text,
   audio_storage_path text,
@@ -182,102 +134,34 @@ create table if not exists assignment_items (
   order_index int not null,
   min_recording_sec int not null default 0,
   max_recording_sec int not null default 120,
+  writing_mode text check (writing_mode in ('picture_description', 'topic_diary')),
+  writing_unit text check (writing_unit in ('paragraphs', 'sentences')),
+  writing_unit_count integer not null default 4,
+  prompt_text text,
+  writing_instructions text,
+  writing_hint text,
+  writing_example text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (assignment_id, order_index)
 );
-
-alter table assignment_items drop constraint if exists assignment_items_item_type_check;
-alter table assignment_items
-  add constraint assignment_items_item_type_check
-  check (item_type in ('listening_recording', 'image_speaking', 'sentence_shadowing', 'free_speaking', 'writing_prompt', 'quiz_question'));
-
-do $$
-begin
-  if to_regclass('public.assignment_templates') is not null then
-    insert into assignments (
-      id, teacher_id, title, description, assignment_type, image_url, image_storage_path, image_file_name, status, updated_at
-    )
-    select
-      t.id,
-      t.teacher_id,
-      t.title,
-      t.description,
-      t.assignment_type,
-      t.image_url,
-      t.image_storage_path,
-      t.image_file_name,
-      'draft',
-      now()
-    from assignment_templates t
-    on conflict (id) do update set
-      title = excluded.title,
-      description = excluded.description,
-      assignment_type = excluded.assignment_type,
-      image_url = excluded.image_url,
-      image_storage_path = excluded.image_storage_path,
-      image_file_name = excluded.image_file_name,
-      updated_at = now();
-
-    insert into assignment_items (
-      id, assignment_id, item_type, title, passage_text, audio_url, audio_storage_path,
-      audio_file_name, order_index, min_recording_sec, max_recording_sec
-    )
-    select
-      concat(t.id, '-item-1'),
-      t.id,
-      case
-        when t.assignment_type in ('image_speaking', 'sentence_shadowing', 'free_speaking', 'listening_recording') then t.assignment_type
-        else 'listening_recording'
-      end,
-      t.passage_title,
-      coalesce(t.passage_text, ''),
-      t.audio_url,
-      t.audio_storage_path,
-      t.audio_file_name,
-      1,
-      t.min_recording_sec,
-      t.max_recording_sec
-    from assignment_templates t
-    on conflict (assignment_id, order_index) do update set
-      item_type = excluded.item_type,
-      title = excluded.title,
-      passage_text = excluded.passage_text,
-      audio_url = excluded.audio_url,
-      audio_storage_path = excluded.audio_storage_path,
-      audio_file_name = excluded.audio_file_name,
-      min_recording_sec = excluded.min_recording_sec,
-      max_recording_sec = excluded.max_recording_sec,
-      updated_at = now();
-  end if;
-end $$;
-
-drop table if exists assignment_templates;
 
 create table if not exists assignment_targets (
   id text primary key,
   assignment_id text not null references assignments(id) on delete cascade,
   class_id text references classes(id) on delete cascade,
   student_id text not null references students(id) on delete cascade,
-  status text not null default 'assigned' check (status in ('assigned', 'submitted', 'late', 'excused')),
+  status text not null default 'assigned' check (status in ('assigned', 'submitted', 'late', 'excused', 'cancelled')),
   due_at timestamptz,
   submitted_at timestamptz,
   reviewed boolean not null default false,
   feedback text,
+  cancelled_at timestamptz,
+  cancelled_by text references teachers(id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (assignment_id, student_id)
 );
-
-alter table assignment_targets add column if not exists due_at timestamptz;
-alter table assignment_targets add column if not exists class_id text references classes(id) on delete cascade;
-
-update assignment_targets at
-set class_id = a.class_id
-from assignments a
-where at.assignment_id = a.id
-  and at.class_id is null
-  and a.class_id is not null;
 
 create table if not exists submissions (
   id text primary key,
@@ -303,6 +187,13 @@ create table if not exists submission_items (
   recording_duration_sec int,
   file_size_bytes bigint,
   recording_storage_path text,
+  original_answer_text text,
+  answer_text text,
+  ai_corrected_text text,
+  ai_feedback text,
+  ai_grammar_notes text,
+  ai_expression_notes text,
+  ai_feedback_raw jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (submission_id, assignment_item_id)
@@ -326,14 +217,23 @@ create table if not exists certificates (
   created_at timestamptz not null default now()
 );
 
+create unique index if not exists classes_teacher_name_unique
+  on classes(teacher_id, lower(name));
+
 create index if not exists auth_sessions_user_id_idx on auth_sessions(user_id);
 create index if not exists auth_sessions_expires_at_idx on auth_sessions(expires_at);
 create index if not exists students_teacher_id_idx on students(teacher_id);
 create index if not exists class_memberships_student_id_idx on class_memberships(student_id);
+create index if not exists assignments_teacher_id_idx on assignments(teacher_id);
 create index if not exists assignments_class_id_idx on assignments(class_id);
 create index if not exists assignment_targets_student_id_idx on assignment_targets(student_id);
 create index if not exists assignment_targets_class_id_idx on assignment_targets(class_id);
+create index if not exists idx_assignment_targets_assignment_status on assignment_targets(assignment_id, status);
+create index if not exists idx_assignment_targets_assignment_class_status on assignment_targets(assignment_id, class_id, status);
+create index if not exists idx_assignment_targets_cancelled_at on assignment_targets(cancelled_at) where status = 'cancelled';
 create index if not exists submissions_student_id_idx on submissions(student_id);
+create index if not exists submissions_assignment_target_id_idx on submissions(assignment_target_id);
+create index if not exists submission_items_submission_id_idx on submission_items(submission_id);
 
 create or replace view class_list_view as
 select
@@ -349,13 +249,10 @@ from classes c
 left join class_memberships cm on cm.class_id = c.id
 group by c.id;
 
-drop view if exists student_list_view;
-
 create or replace view student_list_view as
 select
   s.id,
   s.teacher_id,
-  coalesce(s.student_login_id, s.student_code) as student_code,
   s.student_login_id,
   s.name,
   s.school_name,
@@ -375,20 +272,20 @@ group by s.id;
 
 create or replace view student_learning_history_view as
 select
-  concat('history-', a.id, '-', s.id) as id,
-  s.id as student_id,
-  coalesce(a.assigned_date, a.created_at::date) as date,
+  concat('history-', at.assignment_id, '-', at.student_id) as id,
+  at.student_id,
+  coalesce(at.submitted_at, at.due_at, a.due_at, a.created_at)::date as date,
   a.title as assignment_title,
   a.assignment_type,
   c.name as class_name,
   case
     when sub.id is not null then 'submitted'
-    when a.due_at is not null and a.due_at < now() then 'late'
+    when coalesce(at.due_at, a.due_at) is not null and coalesce(at.due_at, a.due_at) < now() then 'late'
     else 'not_submitted'
   end as submit_status,
   tf.score,
   case
-    when tf.id is not null or sub.status = 'reviewed' then 'reviewed'
+    when tf.id is not null or sub.status = 'reviewed' or at.reviewed = true then 'reviewed'
     when sub.id is not null then 'pending'
     else 'none'
   end as review_status,
@@ -396,9 +293,108 @@ select
     when sub.id is not null then concat('/teacher/submissions/', sub.id)
     else null
   end as detail_href
-from students s
-join class_memberships cm on cm.student_id = s.id
-join assignments a on a.class_id = cm.class_id
-join classes c on c.id = a.class_id
-left join submissions sub on sub.assignment_id = a.id and sub.student_id = s.id
+from assignment_targets at
+join assignments a on a.id = at.assignment_id
+left join classes c on c.id = at.class_id and c.teacher_id = a.teacher_id
+left join submissions sub on sub.assignment_id = a.id and sub.student_id = at.student_id
 left join teacher_feedback tf on tf.submission_id = sub.id;
+
+create or replace view assignment_target_status_view as
+select
+  at.id as target_id,
+  at.assignment_id,
+  at.class_id,
+  c.name as class_name,
+  at.student_id,
+  s.name as student_name,
+  at.status as target_status,
+  at.due_at,
+  at.submitted_at as target_submitted_at,
+  at.reviewed,
+  at.feedback,
+  at.cancelled_at,
+  at.cancelled_by,
+  sub.id as submission_id,
+  sub.status as submission_status,
+  sub.submitted_at,
+  sub.reviewed_at,
+  case
+    when at.status = 'cancelled' then 'cancelled'
+    when sub.id is not null and coalesce(sub.status, 'not_submitted') <> 'not_submitted' then 'submitted'
+    when at.status in ('submitted', 'late') then 'submitted'
+    else 'not_submitted'
+  end as computed_submission_status,
+  case
+    when at.status = 'cancelled' then false
+    when sub.id is not null and coalesce(sub.status, 'not_submitted') <> 'not_submitted' then false
+    when at.status in ('submitted', 'late') then false
+    else true
+  end as cancellable
+from assignment_targets at
+join assignments a on a.id = at.assignment_id
+join students s on s.id = at.student_id
+left join classes c on c.id = at.class_id
+left join submissions sub on sub.assignment_id = at.assignment_id and sub.student_id = at.student_id;
+
+create or replace function set_updated_at()
+returns trigger as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$ language plpgsql;
+
+drop trigger if exists app_users_set_updated_at on app_users;
+create trigger app_users_set_updated_at
+before update on app_users
+for each row execute function set_updated_at();
+
+drop trigger if exists teachers_set_updated_at on teachers;
+create trigger teachers_set_updated_at
+before update on teachers
+for each row execute function set_updated_at();
+
+drop trigger if exists students_set_updated_at on students;
+create trigger students_set_updated_at
+before update on students
+for each row execute function set_updated_at();
+
+drop trigger if exists classes_set_updated_at on classes;
+create trigger classes_set_updated_at
+before update on classes
+for each row execute function set_updated_at();
+
+drop trigger if exists class_schedule_days_set_updated_at on class_schedule_days;
+create trigger class_schedule_days_set_updated_at
+before update on class_schedule_days
+for each row execute function set_updated_at();
+
+drop trigger if exists assignments_set_updated_at on assignments;
+create trigger assignments_set_updated_at
+before update on assignments
+for each row execute function set_updated_at();
+
+drop trigger if exists assignment_items_set_updated_at on assignment_items;
+create trigger assignment_items_set_updated_at
+before update on assignment_items
+for each row execute function set_updated_at();
+
+drop trigger if exists assignment_targets_set_updated_at on assignment_targets;
+create trigger assignment_targets_set_updated_at
+before update on assignment_targets
+for each row execute function set_updated_at();
+
+drop trigger if exists submissions_set_updated_at on submissions;
+create trigger submissions_set_updated_at
+before update on submissions
+for each row execute function set_updated_at();
+
+drop trigger if exists submission_items_set_updated_at on submission_items;
+create trigger submission_items_set_updated_at
+before update on submission_items
+for each row execute function set_updated_at();
+
+drop trigger if exists teacher_feedback_set_updated_at on teacher_feedback;
+create trigger teacher_feedback_set_updated_at
+before update on teacher_feedback
+for each row execute function set_updated_at();

@@ -5,16 +5,10 @@ import { Card } from "@/components/ui/Card";
 import { TeacherLayout } from "@/components/layout/TeacherLayout";
 import { studentRepository } from "@/features/student-management/repositories/studentRepository";
 import type { StudentLearningHistory } from "@/features/student-management/types/studentManagement";
+import { assignmentTypeLabel as formatAssignmentTypeLabel } from "@/lib/assignmentTypes";
 
-function assignmentTypeLabel(type: StudentLearningHistory["assignmentType"]) {
-  if (type === "listening_recording") return "듣기/녹음";
-  if (type === "image_speaking") return "이미지 말하기";
-  if (type === "sentence_shadowing") return "문장 따라 읽기";
-  if (type === "free_speaking") return "자유 말하기";
-  if (type === "writing") return "라이팅";
-  if (type === "vocabulary") return "단어";
-  if (type === "quiz") return "퀴즈";
-  return "일반";
+function assignmentTypeLabel(type: string) {
+  return formatAssignmentTypeLabel(type);
 }
 
 function submitStatusLabel(status: StudentLearningHistory["submitStatus"]) {

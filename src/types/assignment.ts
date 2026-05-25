@@ -1,15 +1,22 @@
+import type { AssignmentItemType, AssignmentSubject, AssignmentType, WritingMode, WritingUnit } from "@/lib/assignmentTypes";
+
 export type Assignment = {
   id: string;
   teacherId: string;
   classId: string;
   title: string;
   description?: string;
-  assignmentType: "listening_recording" | "image_speaking" | "sentence_shadowing" | "free_speaking" | "writing" | "quiz" | "vocabulary" | "general";
+  assignmentType: AssignmentType;
+  assignmentSubject?: AssignmentSubject;
   imageUrl?: string;
   imageStoragePath?: string;
   dueAt?: string;
   status: "draft" | "published" | "closed" | "archived";
   targetStatus?: "assigned" | "submitted" | "late" | "excused" | string;
+  submittedAt?: string;
+  reviewedAt?: string;
+  teacherComment?: string;
+  submissionId?: string;
   items: AssignmentItem[];
   createdAt: string;
 };
@@ -17,12 +24,29 @@ export type Assignment = {
 export type AssignmentItem = {
   id: string;
   assignmentId: string;
-  itemType: "listening_recording" | "image_speaking" | "sentence_shadowing" | "free_speaking" | "writing_prompt" | "quiz_question";
+  itemType: AssignmentItemType;
   title?: string;
   passageText: string;
   audioUrl?: string;
   audioFileName?: string;
+  recordingUrl?: string;
+  recordingFileName?: string;
+  recordingDurationSec?: number;
   orderIndex: number;
   minRecordingSec: number;
   maxRecordingSec: number;
+  writingMode?: WritingMode;
+  writingUnit?: WritingUnit;
+  writingUnitCount?: number;
+  promptText?: string;
+  writingInstructions?: string;
+  writingHint?: string;
+  writingExample?: string;
+  originalAnswerText?: string;
+  answerText?: string;
+  aiCorrectedText?: string;
+  aiFeedback?: string;
+  aiGrammarNotes?: string;
+  aiExpressionNotes?: string;
+  aiFeedbackRaw?: unknown;
 };

@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 
 import { query } from "@/lib/postgres";
-import { mockTeacherId } from "@/server/teacher/mockTeacher";
+import { requireTeacherSession } from "@/server/teacher/session";
 
 export const runtime = "nodejs";
 
 export async function GET(_request: Request, context: { params: Promise<{ classId: string }> }) {
+  const { teacherId } = await requireTeacherSession();
   const { classId } = await context.params;
   const result = await query(
     `
@@ -14,7 +15,7 @@ export async function GET(_request: Request, context: { params: Promise<{ classI
       where id = $1 and teacher_id = $2
       limit 1
     `,
-    [classId, mockTeacherId],
+    [classId, teacherId],
   );
 
   if (!result.rows[0]) return NextResponse.json({ error: "반을 찾을 수 없습니다." }, { status: 404 });
