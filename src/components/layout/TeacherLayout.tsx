@@ -8,6 +8,7 @@ const nav = [
   ["반 관리", "/teacher/classes"],
   ["학생 관리", "/teacher/students"],
   ["숙제 관리", "/teacher/assignments"],
+  ["계정 설정", "/teacher/settings/account"],
   ["학생 화면", "/student/home"],
 ];
 
@@ -34,7 +35,9 @@ export function TeacherLayout({ children, title }: { children: ReactNode; title:
               <h1 className="text-2xl font-bold tracking-normal md:text-3xl">{title}</h1>
             </div>
             <form action={logoutAction}>
-              <button className="rounded-md border border-line bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">로그아웃</button>
+              <button className="rounded-md border border-line bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                로그아웃
+              </button>
             </form>
           </header>
           {children}

@@ -2,7 +2,6 @@ import { randomUUID } from "crypto";
 import type { PoolClient } from "pg";
 
 import { query } from "@/lib/postgres";
-import { mockTeacherId } from "@/server/teacher/mockTeacher";
 
 export type NoticeStatus = "draft" | "published" | "hidden" | "archived";
 export type NoticeTargetType = "all" | "class" | "student";
@@ -62,7 +61,7 @@ export function normalizeNotice(row: Record<string, unknown>) {
   };
 }
 
-export async function getGlobalNotices(teacherId = mockTeacherId) {
+export async function getGlobalNotices(teacherId: string) {
   const result = await query(
     `
       select n.*, nt.target_type, nt.class_id

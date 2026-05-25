@@ -13,22 +13,35 @@ type LoginUserRow = {
   role: UserRole;
   display_name: string;
   linked_student_id: string | null;
+  teacher_id: string | null;
+  teacher_email: string | null;
+  teacher_display_name: string | null;
 };
 
 export async function POST(request: Request) {
-  const body = await request.json().catch(() => null) as { username?: string; password?: string } | null;
+  const body = (await request.json().catch(() => null)) as { username?: string; password?: string } | null;
   const username = body?.username?.trim();
   const password = body?.password ?? "";
 
   if (!username || !password) {
-    return NextResponse.json({ error: "아이디와 비밀번호를 입력해 주세요." }, { status: 400 });
+    return NextResponse.json({ error: "아이디와 비밀번호를 입력해주세요." }, { status: 400 });
   }
 
   const result = await query<LoginUserRow>(
     `
-      select id, username, password_hash, role, display_name, linked_student_id
-      from app_users
-      where username = $1 and role = 'teacher'
+      select
+        u.id,
+        u.username,
+        u.password_hash,
+        u.role,
+        u.display_name,
+        u.linked_student_id,
+        t.id as teacher_id,
+        t.email as teacher_email,
+        t.display_name as teacher_display_name
+      from app_users u
+      left join teachers t on t.app_user_id = u.id
+      where u.username = $1 and u.role = 'teacher'
       limit 1
     `,
     [username],
@@ -39,20 +52,25 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "아이디 또는 비밀번호가 올바르지 않습니다." }, { status: 401 });
   }
 
+  if (!user.teacher_id) {
+    return NextResponse.json({ error: "강사 계정 정보가 연결되어 있지 않습니다." }, { status: 403 });
+  }
+
   await createSession({
     id: user.id,
     username: user.username,
     role: user.role,
-    displayName: user.display_name,
+    displayName: user.teacher_display_name ?? user.display_name,
     linkedStudentId: user.linked_student_id,
   });
 
   return NextResponse.json({
     user: {
-      id: user.id,
+      teacherId: user.teacher_id,
       username: user.username,
       role: user.role,
-      displayName: user.display_name,
+      displayName: user.teacher_display_name ?? user.display_name,
+      email: user.teacher_email,
     },
   });
 }

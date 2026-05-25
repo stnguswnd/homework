@@ -63,7 +63,8 @@ try {
     "database/assignment_target_management.sql",
     "database/finalize_assignment_types_and_writing.sql",
     "database/vocabulary_assignments.sql",
-    "database/calendar_notice_test.sql",
+    "database/calendar_notice_schema.sql",
+    "database/calendar_notice_demo_seed.sql",
     "database/performance_indexes.sql",
   ]) {
     console.log(`Applying ${file}`);

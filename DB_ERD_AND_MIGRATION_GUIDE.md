@@ -34,14 +34,19 @@ erDiagram
   teachers ||--o{ students : owns
   teachers ||--o{ assignments : creates
   teachers ||--o{ teacher_feedback : writes
+  teachers ||--o{ notices : writes
+  teachers ||--o{ tests : creates
+  teachers ||--o{ class_calendar_events : manages
 
   classes ||--o{ class_memberships : has
   students ||--o{ class_memberships : belongs_to
 
   classes ||--o{ class_schedule_days : schedules
+  classes ||--o{ class_calendar_events : has_events
   class_schedule_days ||--o{ assignments : can_link
 
   assignments ||--o{ assignment_items : contains
+  assignments ||--o{ assignment_vocabulary_items : contains_words
   assignments ||--o{ assignment_targets : assigned_to
   classes ||--o{ assignment_targets : scopes
   students ||--o{ assignment_targets : receives
@@ -50,10 +55,21 @@ erDiagram
   assignments ||--o{ submissions : has
   students ||--o{ submissions : submits
   submissions ||--o{ submission_items : contains
+  submissions ||--o{ submission_vocabulary_items : contains_word_answers
   assignment_items ||--o{ submission_items : answered_by
+  assignment_vocabulary_items ||--o{ submission_vocabulary_items : answered_by
 
   submissions ||--o| teacher_feedback : receives
   students ||--o{ certificates : earns
+
+  notices ||--o{ notice_targets : targets
+  classes ||--o{ notice_targets : receives_notice
+  students ||--o{ notice_targets : receives_notice
+
+  class_calendar_events ||--o| tests : can_link
+  classes ||--o{ tests : has_tests
+  tests ||--o{ test_results : has_results
+  students ||--o{ test_results : receives_result
 ```
 
 ## 3. 테이블 설계
@@ -232,22 +248,39 @@ erDiagram
 - `created_at timestamptz default now()`
 - `updated_at timestamptz default now()`
 
-현재 assignment type:
+현재 운영 assignment type:
 
 - `listening_recording`
+- `writing`
+- `listening`
+- `vocabulary_example`
+- `vocabulary_recording`
+
+Legacy assignment type:
+
 - `image_speaking`
 - `sentence_shadowing`
 - `free_speaking`
-- `writing`
 - `quiz`
 - `vocabulary`
 - `general`
+
+신규 UI/API 생성에서는 legacy type을 허용하지 않습니다. 기존 DB에 남아 있는 legacy type은 migration/backfill 단계에서 `listening_recording`으로 정규화합니다.
 
 현재 subject:
 
 - `Phonics`
 - `AL`
 - `AR`
+- `SL`
+- `RBJ`
+- `SG`
+- `ST`
+- `SR`
+- `JT`
+- `Boost`
+- `BRT`
+- `BLT`
 
 원칙:
 
@@ -280,6 +313,51 @@ erDiagram
 제약:
 
 - `unique (assignment_id, order_index)`
+
+현재 운영 item type:
+
+- `listening_recording`
+- `listening`
+- `writing_prompt`
+- `vocabulary_example`
+- `vocabulary_recording`
+
+Writing 전용 컬럼:
+
+- `writing_mode text check in ('picture_description', 'topic_diary')`
+- `writing_unit text check in ('paragraphs', 'sentences')`
+- `writing_unit_count int default 4`
+- `prompt_text text`
+- `writing_instructions text`
+- `writing_hint text`
+- `writing_example text`
+
+단어장 숙제 전용 지시문도 현재는 `prompt_text`, `writing_instructions`, `writing_hint`, `writing_example`, `min_recording_sec`, `max_recording_sec`를 재사용합니다.
+
+### assignment_vocabulary_items
+
+단어장 예문/단어장 녹음 숙제에 포함된 단어 목록입니다. 단어장 재사용 기능은 만들지 않고, 단어 목록은 숙제에 종속된 콘텐츠로 저장합니다.
+
+주요 컬럼:
+
+- `id text primary key`
+- `assignment_id text not null references assignments(id) on delete cascade`
+- `word text not null`
+- `meaning text not null`
+- `order_index int not null default 0`
+- `created_at timestamptz default now()`
+- `updated_at timestamptz default now()`
+
+관계:
+
+- `assignments 1 : N assignment_vocabulary_items`
+
+정책:
+
+- 단어 수는 MVP 기준 1~200개
+- `word`, `meaning`이 모두 있는 row만 저장
+- `order_index` 기준으로 학생 화면에 표시
+- 숙제 삭제 시 단어 목록도 cascade 삭제
 
 원칙:
 
@@ -415,6 +493,52 @@ erDiagram
 - 학생 녹음 바이너리는 Supabase Storage `homework-audio`에 저장
 - DB에는 `recording_storage_path`, `recording_file_name`, `recording_mime_type`, `file_size_bytes`, `recording_duration_sec`만 저장
 
+Writing 제출 전용 컬럼:
+
+- `answer_text`
+- `revised_answer_text`
+- `ai_corrected_text`
+- `ai_feedback`
+- `ai_grammar_notes`
+- `ai_expression_notes`
+- `ai_feedback_raw`
+
+### submission_vocabulary_items
+
+단어장 예문 숙제의 단어별 답안과 AI 첨삭 결과입니다. 단어장 녹음 숙제는 이 테이블을 사용하지 않고, 기존 `submission_items`의 녹음 metadata를 재사용합니다.
+
+주요 컬럼:
+
+- `id text primary key`
+- `submission_id text not null references submissions(id) on delete cascade`
+- `assignment_vocabulary_item_id text not null references assignment_vocabulary_items(id) on delete cascade`
+- `original_answer_text text`
+- `ai_corrected_text text`
+- `ai_feedback text`
+- `ai_grammar_notes text`
+- `ai_feedback_raw jsonb`
+- `revised_answer_text text`
+- `teacher_comment text`
+- `status text default 'draft' check in ('draft', 'submitted', 'reviewed', 'returned')`
+- `created_at timestamptz default now()`
+- `updated_at timestamptz default now()`
+
+제약:
+
+- `unique (submission_id, assignment_vocabulary_item_id)`
+
+관계:
+
+- `submissions 1 : N submission_vocabulary_items`
+- `assignment_vocabulary_items 1 : N submission_vocabulary_items`
+
+정책:
+
+- AI 첨삭 전 학생 문장: `original_answer_text`
+- AI가 고친 문장: `ai_corrected_text`
+- 학생이 다시 쓴 최종 문장: `revised_answer_text`
+- 강사 단어별 코멘트 확장 가능: `teacher_comment`
+
 ### teacher_feedback
 
 강사 피드백 보조 테이블입니다.
@@ -433,6 +557,107 @@ erDiagram
 
 - 제출 상세 조회 시 `coalesce(submissions.teacher_comment, teacher_feedback.comment)` 형태로 사용
 - 리뷰 저장 시 `submissions`, `assignment_targets`, `teacher_feedback`를 함께 갱신
+
+### class_calendar_events
+
+학생/강사 캘린더에 표시되는 반별 이벤트 테이블입니다. `class_schedule_days`는 수업일/진도 관리용으로 유지하고, 시험/휴강/보강/기타 캘린더 이벤트는 이 테이블에서 관리합니다.
+
+주요 컬럼:
+
+- `id text primary key`
+- `teacher_id text not null references teachers(id) on delete cascade`
+- `class_id text not null references classes(id) on delete cascade`
+- `schedule_day_id text references class_schedule_days(id) on delete set null`
+- `event_type text check in ('test', 'cancelled', 'makeup', 'notice', 'class', 'etc')`
+- `title text not null`
+- `description text`
+- `event_date date not null`
+- `start_time time`
+- `end_time time`
+- `status text default 'active' check in ('active', 'cancelled', 'hidden')`
+- `created_at timestamptz default now()`
+- `updated_at timestamptz default now()`
+
+### notices
+
+강사 전체 공지와 반 공지의 본문 테이블입니다. 공지 대상은 `notice_targets`에서 관리합니다.
+
+주요 컬럼:
+
+- `id text primary key`
+- `teacher_id text not null references teachers(id) on delete cascade`
+- `title text not null`
+- `content text not null`
+- `image_url text`
+- `image_storage_path text`
+- `image_file_name text`
+- `status text default 'published' check in ('draft', 'published', 'hidden', 'archived')`
+- `published_at timestamptz`
+- `created_at timestamptz default now()`
+- `updated_at timestamptz default now()`
+
+### notice_targets
+
+공지 공개 대상을 저장합니다.
+
+주요 컬럼:
+
+- `id text primary key`
+- `notice_id text not null references notices(id) on delete cascade`
+- `class_id text references classes(id) on delete cascade`
+- `student_id text references students(id) on delete cascade`
+- `target_type text check in ('all', 'class', 'student')`
+- `created_at timestamptz default now()`
+
+대상 정책:
+
+- 전체 공지: `target_type = 'all'`, `class_id = null`, `student_id = null`
+- 반 공지: `target_type = 'class'`, `class_id` not null
+- 학생 개별 공지: `target_type = 'student'`, `student_id` not null
+
+### tests
+
+반별 시험 정의 테이블입니다. 시험 생성 시 `class_calendar_events.event_type = 'test'` 이벤트와 연결할 수 있습니다.
+
+주요 컬럼:
+
+- `id text primary key`
+- `teacher_id text not null references teachers(id) on delete cascade`
+- `class_id text references classes(id) on delete cascade`
+- `calendar_event_id text references class_calendar_events(id) on delete set null`
+- `title text not null`
+- `subject text not null`
+- `test_date date not null`
+- `start_time time`
+- `end_time time`
+- `scope text`
+- `description text`
+- `status text default 'scheduled' check in ('scheduled', 'completed', 'cancelled', 'hidden')`
+- `created_at timestamptz default now()`
+- `updated_at timestamptz default now()`
+
+### test_results
+
+학생별 시험 결과입니다. 학생 화면에서는 반드시 student session 기준으로 자기 결과만 조회합니다.
+
+주요 컬럼:
+
+- `id text primary key`
+- `test_id text not null references tests(id) on delete cascade`
+- `teacher_id text not null references teachers(id) on delete cascade`
+- `class_id text references classes(id) on delete set null`
+- `student_id text not null references students(id) on delete cascade`
+- `score numeric(5,2)`
+- `max_score numeric(5,2) default 100`
+- `result text check in ('PASS', 'NonPASS')`
+- `teacher_memo text`
+- `taken_at date`
+- `created_at timestamptz default now()`
+- `updated_at timestamptz default now()`
+
+제약:
+
+- `unique (test_id, student_id)`
 
 ### certificates
 
@@ -658,6 +883,26 @@ Storage path:
   - `assignment_targets.status = submitted`
   - `assignment_targets.submitted_at = now()`
 
+### Student vocabulary submission
+
+- `POST /api/student/vocabulary-feedback`
+  - 단어장 예문 숙제에서 단어/뜻/학생 문장을 받아 AI 첨삭 결과 반환
+  - OpenAI API key는 서버에서만 사용
+  - 실패 시 학생 화면이 깨지지 않도록 fallback 응답 반환
+
+- `POST /api/student/submissions/vocabulary-example`
+  - student session required
+  - `assignment_targets`로 현재 학생에게 배정된 과제인지 확인
+  - `submissions` upsert
+  - `submission_items` placeholder upsert
+  - `submission_vocabulary_items`에 단어별 원문/AI 첨삭/다시 쓴 글 저장
+  - `assignment_targets.status = submitted` 또는 `late`
+  - `assignment_targets.submitted_at = now()`
+
+- 단어장 녹음 숙제는 기존 `POST /api/student/submissions/recording`을 재사용
+  - 학생 녹음 파일 1개만 Supabase Storage `homework-audio`에 업로드
+  - 단어별 녹음은 저장하지 않음
+
 ### Teacher submissions
 
 - `GET /api/teacher/assignments/:assignmentId/submissions`
@@ -667,7 +912,7 @@ Storage path:
 
 - `GET /api/teacher/submissions/:submissionId`
   - 제출 상세
-  - `submissions`, `submission_items`, `students`, `assignments`, `assignment_items`, `teacher_feedback`
+  - `submissions`, `submission_items`, `submission_vocabulary_items`, `students`, `assignments`, `assignment_items`, `assignment_vocabulary_items`, `teacher_feedback`
   - 녹음 signed URL 생성
 
 - `PATCH /api/teacher/submissions/:submissionId/review`
@@ -720,6 +965,13 @@ Storage path:
 - 원본 MP3와 내 녹음이 동시에 재생되지 않도록 UI state 분리
 - 제출은 실제 `POST /api/student/submissions/recording`으로 Storage + DB 연동
 
+### 단어장 숙제
+
+- `vocabulary_example`, `vocabulary_recording` 신규 운영 타입 추가
+- 단어장 재사용 테이블은 만들지 않고, 과제별 단어 목록을 `assignment_vocabulary_items`에 저장
+- 단어장 예문 제출은 `submission_vocabulary_items`에 단어별 원문/AI 첨삭/다시 쓴 글 저장
+- 단어장 녹음 제출은 기존 `submission_items` 녹음 metadata를 재사용하고, 학생 녹음 파일 1개만 저장
+
 ### 검토/승인/반려
 
 - 제출 상세의 승인/반려/피드백 저장이 DB에 반영
@@ -760,7 +1012,7 @@ NEXT_PUBLIC_SUPABASE_AUDIO_BUCKET="homework-audio"
 
 ### Step 3. Schema migration 실행
 
-현재 통합 schema:
+신규 Supabase DB에 가장 먼저 적용할 통합 schema:
 
 ```text
 database/auth.sql
@@ -773,6 +1025,24 @@ psql "$DATABASE_URL" -f database/auth.sql
 ```
 
 Supabase SQL Editor에서 실행해도 됩니다.
+
+현재 프로젝트의 확장 migration:
+
+```text
+database/calendar_notice_schema.sql
+database/finalize_assignment_types_and_writing.sql
+database/vocabulary_assignments.sql
+```
+
+`database/auth.sql`에는 현재 기준 핵심 테이블과 최근 단어장 테이블까지 반영되어 있습니다. 다만 운영 Supabase 전환 전에는 아래 기준으로 확인합니다.
+
+1. 빈 Supabase 테스트 DB라면 `database/auth.sql`을 먼저 실행합니다.
+2. `database/auth.sql`에 이미 포함된 테이블/constraint를 중복 실행하지 않도록 확인합니다.
+3. 기존 로컬 DB 또는 오래된 테스트 DB라면 필요한 보강 migration을 순서대로 실행합니다.
+   - `database/calendar_notice_schema.sql`
+   - `database/finalize_assignment_types_and_writing.sql`
+   - `database/vocabulary_assignments.sql`
+4. 신규 Supabase 운영 DB에는 `legacy-backfill.sql`, `drop-legacy.sql`을 기본 실행하지 않습니다.
 
 운영 전 권장:
 
@@ -788,7 +1058,9 @@ supabase/migrations/
   202605250003_create_assignment_tables.sql
   202605250004_create_submission_feedback_tables.sql
   202605250005_create_class_schedule_tables.sql
-  202605250006_create_views_and_indexes.sql
+  202605250006_create_notice_calendar_test_tables.sql
+  202605250007_create_vocabulary_assignment_tables.sql
+  202605250008_create_views_and_indexes.sql
 ```
 
 ### Step 4. Seed 분리

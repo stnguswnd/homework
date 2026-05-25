@@ -1,7 +1,5 @@
--- Backward-compatible wrapper for the calendar/notice/test schema.
--- This file intentionally contains DDL only. Demo inserts were moved to
--- database/calendar_notice_demo_seed.sql so empty Supabase DB migrations do
--- not depend on teachers.id = 'teacher-1'.
+-- Calendar, notice, and test extension schema.
+-- DDL only. Safe to run on an empty Supabase database before any teacher/demo data exists.
 
 create table if not exists class_calendar_events (
   id text primary key,

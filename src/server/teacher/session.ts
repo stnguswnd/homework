@@ -1,15 +1,68 @@
 import "server-only";
 
-import { mockTeacherId } from "@/server/teacher/mockTeacher";
+import { getCurrentUser } from "@/lib/auth/session";
+import { query } from "@/lib/postgres";
 
-export async function requireTeacherSession() {
-  // TODO:
-  // - Replace this mock with httpOnly cookie based teacher session validation.
-  // - Read teacherId from the verified cookie/session instead of the mock.
-  // - Return 401 from teacher APIs when teacherId is missing or invalid.
-  // - Keep every teacher API dependent on this utility for teacherId access.
+export class TeacherSessionError extends Error {
+  status = 401;
+
+  constructor(message = "Teacher session required.") {
+    super(message);
+    this.name = "TeacherSessionError";
+  }
+}
+
+export type TeacherSession = {
+  teacherId: string;
+  appUserId: string;
+  username: string;
+  displayName: string;
+  email: string;
+  role: "teacher";
+};
+
+type TeacherSessionRow = {
+  id: string;
+  email: string;
+  display_name: string;
+};
+
+export async function getTeacherSession(): Promise<TeacherSession | null> {
+  const user = await getCurrentUser();
+
+  if (!user || user.role !== "teacher") {
+    return null;
+  }
+
+  const result = await query<TeacherSessionRow>(
+    `
+      select id, email, display_name
+      from teachers
+      where app_user_id = $1 and role = 'teacher'
+      limit 1
+    `,
+    [user.id],
+  );
+  const teacher = result.rows[0];
+
+  if (!teacher) {
+    return null;
+  }
+
   return {
-    teacherId: mockTeacherId,
-    role: "teacher" as const,
+    teacherId: teacher.id,
+    appUserId: user.id,
+    username: user.username,
+    displayName: teacher.display_name || user.displayName,
+    email: teacher.email,
+    role: "teacher",
   };
+}
+
+export async function requireTeacherSession(): Promise<TeacherSession> {
+  const session = await getTeacherSession();
+  if (!session) {
+    throw new TeacherSessionError();
+  }
+  return session;
 }

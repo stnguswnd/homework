@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "create:teacher": "node scripts/create-teacher.mjs",
     "seed:auth": "node scripts/seed-auth.mjs",
+    "seed:calendar-demo": "node scripts/seed-calendar-notice-demo.mjs",
     "reset:demo-db": "node scripts/reset-demo-db.mjs",
     "lint": "next lint"
   },

@@ -33,7 +33,7 @@
 
 ```bash
 psql "$DATABASE_URL" -f database/auth.sql
-psql "$DATABASE_URL" -f database/calendar_notice_test.sql
+psql "$DATABASE_URL" -f database/calendar_notice_schema.sql
 psql "$DATABASE_URL" -f database/finalize_assignment_types_and_writing.sql
 psql "$DATABASE_URL" -f database/performance_indexes.sql
 ```

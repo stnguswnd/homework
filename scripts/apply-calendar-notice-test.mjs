@@ -14,9 +14,9 @@ function readDatabaseUrl() {
 const pool = new Pool({ connectionString: readDatabaseUrl() });
 
 try {
-  const sql = fs.readFileSync("database/calendar_notice_test.sql", "utf8");
+  const sql = fs.readFileSync("database/calendar_notice_schema.sql", "utf8");
   await pool.query(sql);
-  console.log("database/calendar_notice_test.sql applied");
+  console.log("database/calendar_notice_schema.sql applied");
 } finally {
   await pool.end();
 }

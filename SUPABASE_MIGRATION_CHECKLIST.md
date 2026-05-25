@@ -11,16 +11,20 @@
 ### 신규 빈 DB
 
 1. `database/auth.sql`
-2. `database/calendar_notice_test.sql`
+2. `database/calendar_notice_schema.sql`
 3. `database/finalize_assignment_types_and_writing.sql`
-4. 필요한 경우 `npm run seed:auth`
+4. `database/vocabulary_assignments.sql`
+5. `database/performance_indexes.sql`
+6. 필요한 경우 `npm run seed:auth`
 
 ### 기존 로컬/테스트 DB
 
 1. `database/legacy-backfill.sql`
 2. `database/finalize_assignment_types_and_writing.sql`
-3. `database/calendar_notice_test.sql`
-4. 충분히 검증 후에만 `database/drop-legacy.sql`
+3. `database/calendar_notice_schema.sql`
+4. `database/vocabulary_assignments.sql`
+5. `database/performance_indexes.sql`
+6. 충분히 검증 후에만 `database/drop-legacy.sql`
 
 ## legacy SQL 조건
 
@@ -47,12 +51,16 @@
 - `listening_recording`
 - `listening`
 - `writing`
+- `vocabulary_example`
+- `vocabulary_recording`
 
 최종 item type:
 
 - `listening_recording`
 - `listening`
 - `writing_prompt`
+- `vocabulary_example`
+- `vocabulary_recording`
 
 legacy 유형은 모두 `listening_recording`으로 매핑한다.
 
@@ -124,7 +132,8 @@ rg "supabase\\.from|storage\\.upload|SUPABASE_SERVICE_ROLE_KEY" src
 ## 2차 안정화 반영 사항
 
 - 운영 Supabase DB에는 직접 migration을 실행하지 말고, 빈 Supabase 테스트 DB 또는 로컬 테스트 DB에서 먼저 검증한다.
-- `database/auth.sql` 실행 후 공지/캘린더/시험 확장 테이블이 필요하면 `database/calendar_notice_test.sql`을 실행한다.
+- `database/auth.sql` 실행 후 공지/캘린더/시험 확장 테이블이 필요하면 `database/calendar_notice_schema.sql`을 실행한다.
+- demo 공지/캘린더/시험 데이터는 schema migration 이후, 강사/반/학생 데이터가 존재할 때만 `npm run seed:calendar-demo -- --teacher-id teacher-1`로 실행한다.
 - Writing 타입 및 최종 숙제 타입 제약은 `database/finalize_assignment_types_and_writing.sql`로 검증한다.
 - 성능 인덱스는 `database/performance_indexes.sql`을 마지막에 실행한다.
 - 기존 DB에서만 `database/legacy-backfill.sql`과 `database/drop-legacy.sql`을 사용한다. 신규 Supabase DB에는 legacy 보정 SQL을 실행하지 않는다.
@@ -136,7 +145,9 @@ rg "supabase\\.from|storage\\.upload|SUPABASE_SERVICE_ROLE_KEY" src
 - 오디오/이미지는 가능한 `*_storage_path`를 source of truth로 두고 API에서 signed URL을 내려준다.
 - legacy assignment type은 신규 UI에 노출하지 않고, 런타임에서는 `listening_recording`으로 정규화한다.
 - legacy assignment type은 신규 생성 API에서도 허용하지 않는다. 기존 DB에 남은 legacy 값은 migration/backfill 단계에서 `listening_recording`으로 보정한다.
-- 신규 schema의 CHECK constraint는 `assignments.assignment_type in ('listening_recording', 'listening', 'writing')`, `assignment_items.item_type in ('listening_recording', 'listening', 'writing_prompt')`만 허용한다.
+- 신규 schema의 CHECK constraint는 `assignments.assignment_type in ('listening_recording', 'listening', 'writing', 'vocabulary_example', 'vocabulary_recording')`, `assignment_items.item_type in ('listening_recording', 'listening', 'writing_prompt', 'vocabulary_example', 'vocabulary_recording')`만 허용한다.
+- 단어장 숙제 확장은 `database/vocabulary_assignments.sql`로 검증한다.
+- `assignment_vocabulary_items`, `submission_vocabulary_items` 테이블 생성 여부를 확인한다.
 - 학생/강사 주요 화면에서 깨진 한글 문구가 없는지 수동 점검한다.
 - 학생 홈, 강사 대시보드, 숙제 목록은 대량 데이터에서 쿼리 범위와 signed URL 생성 비용을 점검한다.
 
@@ -144,9 +155,11 @@ rg "supabase\\.from|storage\\.upload|SUPABASE_SERVICE_ROLE_KEY" src
 
 ```bash
 psql "$DATABASE_URL" -f database/auth.sql
-psql "$DATABASE_URL" -f database/calendar_notice_test.sql
+psql "$DATABASE_URL" -f database/calendar_notice_schema.sql
 psql "$DATABASE_URL" -f database/finalize_assignment_types_and_writing.sql
+psql "$DATABASE_URL" -f database/vocabulary_assignments.sql
 psql "$DATABASE_URL" -f database/performance_indexes.sql
 npm run seed:auth
+npm run seed:calendar-demo -- --teacher-id teacher-1
 npm run build
 ```

@@ -1,4 +1,5 @@
 import { pbkdf2Sync, randomBytes, timingSafeEqual } from "crypto";
+import bcrypt from "bcryptjs";
 
 export function hashPassword(password: string) {
   const salt = randomBytes(16).toString("hex");
@@ -10,6 +11,10 @@ export function hashPassword(password: string) {
 }
 
 export function verifyPassword(password: string, storedHash: string) {
+  if (storedHash.startsWith("$2a$") || storedHash.startsWith("$2b$") || storedHash.startsWith("$2y$")) {
+    return bcrypt.compareSync(password, storedHash);
+  }
+
   const [scheme, digest, iterationsValue, salt, hash] = storedHash.split("$");
 
   if (scheme !== "pbkdf2" || !digest || !iterationsValue || !salt || !hash) {

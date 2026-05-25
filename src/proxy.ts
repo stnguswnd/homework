@@ -24,6 +24,12 @@ export function proxy(request: NextRequest) {
     }
   }
 
+  if (pathname.startsWith("/api/teacher")) {
+    if (!sessionId || role !== "teacher") {
+      return NextResponse.json({ error: "강사 로그인이 필요합니다." }, { status: 401 });
+    }
+  }
+
   if (pathname.startsWith("/student")) {
     if (!sessionId && !studentSessionId) {
       return NextResponse.redirect(new URL("/login", request.url));
@@ -38,5 +44,5 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/login", "/signup", "/teacher/:path*", "/student/:path*"],
+  matcher: ["/login", "/signup", "/teacher/:path*", "/student/:path*", "/api/teacher/:path*"],
 };

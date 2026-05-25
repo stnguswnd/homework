@@ -15,7 +15,6 @@ export function SignupForm() {
       <label className="grid gap-2 text-sm font-semibold text-slate-700">
         권한
         <Select name="role" defaultValue="student" required>
-          <option value="teacher">강사</option>
           <option value="student">학생</option>
           <option value="parent">부모님</option>
         </Select>
@@ -37,7 +36,7 @@ export function SignupForm() {
         <Input name="studentLoginId" placeholder="학생/부모님 계정만 입력" />
       </label>
       <p className="text-xs leading-relaxed text-slate-500">
-        학생과 부모님은 강사가 먼저 학생을 등록한 뒤 만든 학생 로그인 ID로 가입합니다.
+        공개 회원가입은 지원하지 않습니다. 강사 계정은 개발자/관리자가 발급하고, 학생과 부모님 계정은 강사가 앱에서 발급합니다.
       </p>
       {state.error ? <p className="text-sm font-semibold text-danger">{state.error}</p> : null}
       <Button type="submit" className="min-h-12 text-base" disabled={pending}>
