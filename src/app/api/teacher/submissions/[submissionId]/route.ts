@@ -44,6 +44,20 @@ type Row = {
   ai_expression_notes: string | null;
 };
 
+type VocabularyRow = {
+  id: string;
+  word: string;
+  meaning: string;
+  order_index: number;
+  original_answer_text: string | null;
+  ai_corrected_text: string | null;
+  ai_feedback: string | null;
+  ai_grammar_notes: string | null;
+  revised_answer_text: string | null;
+  teacher_comment: string | null;
+  status: string | null;
+};
+
 async function signedUrl(bucket: string, path: string | null) {
   if (!path) return "";
   const supabase = createSupabaseAdminClient();
@@ -108,6 +122,29 @@ export async function GET(_request: Request, context: { params: Promise<{ submis
 
   if (!result.rows[0]) return NextResponse.json({ error: "제출을 찾을 수 없습니다." }, { status: 404 });
   const first = result.rows[0];
+  const vocabularyResult = await query<VocabularyRow>(
+    `
+      select
+        avi.id,
+        avi.word,
+        avi.meaning,
+        avi.order_index,
+        svi.original_answer_text,
+        svi.ai_corrected_text,
+        svi.ai_feedback,
+        svi.ai_grammar_notes,
+        svi.revised_answer_text,
+        svi.teacher_comment,
+        svi.status
+      from assignment_vocabulary_items avi
+      left join submission_vocabulary_items svi
+        on svi.assignment_vocabulary_item_id = avi.id
+       and svi.submission_id = $1
+      where avi.assignment_id = $2
+      order by avi.order_index
+    `,
+    [submissionId, first.assignment_id],
+  );
 
   return NextResponse.json({
     submissionId: first.submission_id,
@@ -142,6 +179,19 @@ export async function GET(_request: Request, context: { params: Promise<{ submis
       aiGrammarNotes: row.ai_grammar_notes ?? undefined,
       aiExpressionNotes: row.ai_expression_notes ?? undefined,
     }))),
+    vocabularyItems: vocabularyResult.rows.map((row) => ({
+      id: row.id,
+      word: row.word,
+      meaning: row.meaning,
+      orderIndex: row.order_index,
+      originalAnswerText: row.original_answer_text ?? undefined,
+      aiCorrectedText: row.ai_corrected_text ?? undefined,
+      aiFeedback: row.ai_feedback ?? undefined,
+      aiGrammarNotes: row.ai_grammar_notes ?? undefined,
+      revisedAnswerText: row.revised_answer_text ?? undefined,
+      teacherComment: row.teacher_comment ?? undefined,
+      status: row.status ?? undefined,
+    })),
     status: first.status,
     submittedAt: first.submitted_at?.toISOString(),
     dueAt: first.due_at?.toISOString(),

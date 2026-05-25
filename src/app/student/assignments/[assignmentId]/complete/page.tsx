@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { studentAssignmentRepository } from "@/features/assignments/repositories/studentAssignmentRepository";
-import { assignmentSubjectLabel, assignmentTypeLabel, normalizeAssignmentType } from "@/lib/assignmentTypes";
+import { assignmentTypeLabel, normalizeAssignmentType } from "@/lib/assignmentTypes";
 import { formatDateTime, formatDue } from "@/lib/format";
 import { getStudentSession } from "@/server/auth/studentSession";
 
@@ -30,6 +30,18 @@ function completionCopy(type: string) {
     return {
       title: "라이팅 숙제를 제출했어요.",
       body: "선생님이 글과 AI 첨삭 내용을 확인한 뒤 피드백을 줄 거예요.",
+    };
+  }
+  if (normalized === "vocabulary_example") {
+    return {
+      title: "단어장 예문 숙제를 제출했어요.",
+      body: "선생님이 예문과 AI 첨삭 내용을 확인한 뒤 피드백을 줄 거예요.",
+    };
+  }
+  if (normalized === "vocabulary_recording") {
+    return {
+      title: "단어장 녹음 숙제를 제출했어요.",
+      body: "선생님이 녹음 파일을 확인한 뒤 완료 또는 미완료 상태를 알려줄 거예요.",
     };
   }
   return {
@@ -60,7 +72,7 @@ export default async function CompletePage({ params }: { params: Promise<{ assig
           <p className="mt-2 text-slate-600">{copy.body}</p>
           <h2 className="mt-5 text-lg font-bold">{assignment.title}</h2>
           <div className="mt-4 flex flex-wrap justify-center gap-2">
-            <Badge tone="blue">{assignmentSubjectLabel(type)}</Badge>
+            <Badge tone="blue">{assignment.assignmentSubject ?? "Phonics"}</Badge>
             <Badge tone="green">{assignmentTypeLabel(type)}</Badge>
             <Badge tone={assignment.targetStatus === "returned" ? "yellow" : "green"}>{statusLabel(assignment.targetStatus)}</Badge>
             {isLate && <Badge tone="yellow">지각 제출</Badge>}
@@ -85,6 +97,30 @@ export default async function CompletePage({ params }: { params: Promise<{ assig
                 <AudioPlayer className="mt-4" src={item.audioUrl} preload="metadata" />
               </Card>
             )}
+            <Card>
+              <h2 className="font-bold">내 녹음 다시 듣기</h2>
+              {item?.recordingUrl ? (
+                <AudioPlayer className="mt-4" src={item.recordingUrl} preload="metadata" />
+              ) : (
+                <p className="mt-3 text-sm text-slate-500">저장된 녹음 파일을 아직 불러오지 못했습니다.</p>
+              )}
+            </Card>
+          </>
+        )}
+
+        {type === "vocabulary_recording" && (
+          <>
+            <Card>
+              <h2 className="font-bold">단어장</h2>
+              <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                {(assignment.vocabularyItems ?? []).map((word) => (
+                  <div key={word.id} className="grid grid-cols-2 rounded-md border border-line">
+                    <span className="border-r border-line px-3 py-2 font-bold">{word.word}</span>
+                    <span className="px-3 py-2">{word.meaning}</span>
+                  </div>
+                ))}
+              </div>
+            </Card>
             <Card>
               <h2 className="font-bold">내 녹음 다시 듣기</h2>
               {item?.recordingUrl ? (
@@ -121,6 +157,31 @@ export default async function CompletePage({ params }: { params: Promise<{ assig
               <p className="mt-2 whitespace-pre-wrap leading-7">{item?.aiFeedback ?? "-"}</p>
               {item?.aiGrammarNotes && <p className="mt-3 whitespace-pre-wrap text-sm leading-6"><strong>문법 교정사항</strong><br />{item.aiGrammarNotes}</p>}
               {item?.aiExpressionNotes && <p className="mt-3 whitespace-pre-wrap text-sm leading-6"><strong>알면 좋은 표현</strong><br />{item.aiExpressionNotes}</p>}
+            </div>
+          </Card>
+        )}
+
+        {type === "vocabulary_example" && (
+          <Card>
+            <h2 className="text-lg font-bold">단어장 예문 제출 내용</h2>
+            <div className="mt-4 grid gap-3">
+              {(assignment.vocabularyItems ?? []).map((word, index) => {
+                const answer = assignment.submissionVocabularyItems?.find((item) => item.assignmentVocabularyItemId === word.id);
+                return (
+                  <article key={word.id} className="rounded-lg border border-line p-4">
+                    <div className="flex flex-wrap gap-2">
+                      <Badge>{index + 1}</Badge>
+                      <strong>{word.word}</strong>
+                      <span className="text-slate-500">{word.meaning}</span>
+                    </div>
+                    <div className="mt-3 grid gap-3 md:grid-cols-3">
+                      <p className="rounded-md bg-slate-50 p-3 text-sm"><strong>처음 문장</strong><br />{answer?.originalAnswerText ?? "-"}</p>
+                      <p className="rounded-md bg-blue-50 p-3 text-sm"><strong>AI 첨삭</strong><br />{answer?.aiCorrectedText ?? "-"}</p>
+                      <p className="rounded-md bg-green-50 p-3 text-sm"><strong>다시 쓴 글</strong><br />{answer?.revisedAnswerText ?? "-"}</p>
+                    </div>
+                  </article>
+                );
+              })}
             </div>
           </Card>
         )}

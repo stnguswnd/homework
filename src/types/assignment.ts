@@ -17,8 +17,32 @@ export type Assignment = {
   reviewedAt?: string;
   teacherComment?: string;
   submissionId?: string;
+  vocabularyItems?: AssignmentVocabularyItem[];
+  submissionVocabularyItems?: SubmissionVocabularyItem[];
   items: AssignmentItem[];
   createdAt: string;
+};
+
+export type AssignmentVocabularyItem = {
+  id: string;
+  assignmentId: string;
+  word: string;
+  meaning: string;
+  orderIndex: number;
+};
+
+export type SubmissionVocabularyItem = {
+  id: string;
+  submissionId: string;
+  assignmentVocabularyItemId: string;
+  originalAnswerText?: string;
+  aiCorrectedText?: string;
+  aiFeedback?: string;
+  aiGrammarNotes?: string;
+  aiFeedbackRaw?: unknown;
+  revisedAnswerText?: string;
+  teacherComment?: string;
+  status: "draft" | "submitted" | "reviewed" | "returned";
 };
 
 export type AssignmentItem = {

@@ -95,7 +95,7 @@ create table if not exists assignments (
   schedule_day_id text references class_schedule_days(id) on delete set null,
   title text not null,
   description text,
-  assignment_type text not null check (assignment_type in ('listening_recording', 'listening', 'writing')),
+  assignment_type text not null check (assignment_type in ('listening_recording', 'listening', 'writing', 'vocabulary_example', 'vocabulary_recording')),
   assignment_subject text not null default 'Phonics',
   image_url text,
   image_storage_path text,
@@ -110,7 +110,7 @@ create table if not exists assignments (
 create table if not exists assignment_items (
   id text primary key,
   assignment_id text not null references assignments(id) on delete cascade,
-  item_type text not null check (item_type in ('listening_recording', 'listening', 'writing_prompt')),
+  item_type text not null check (item_type in ('listening_recording', 'listening', 'writing_prompt', 'vocabulary_example', 'vocabulary_recording')),
   title text,
   passage_text text,
   audio_url text,

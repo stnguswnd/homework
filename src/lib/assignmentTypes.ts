@@ -1,6 +1,16 @@
-export type AssignmentType = "listening_recording" | "listening" | "writing";
+export type AssignmentType =
+  | "listening_recording"
+  | "listening"
+  | "writing"
+  | "vocabulary_example"
+  | "vocabulary_recording";
 
-export type AssignmentItemType = "listening_recording" | "listening" | "writing_prompt";
+export type AssignmentItemType =
+  | "listening_recording"
+  | "listening"
+  | "writing_prompt"
+  | "vocabulary_example"
+  | "vocabulary_recording";
 
 export type WritingMode = "picture_description" | "topic_diary";
 
@@ -10,7 +20,7 @@ export const ASSIGNMENT_SUBJECTS = ["Phonics", "AL", "AR", "SL", "RBJ", "SG", "S
 
 export type AssignmentSubject = (typeof ASSIGNMENT_SUBJECTS)[number];
 
-const SUPPORTED_ASSIGNMENT_TYPES = ["listening_recording", "listening", "writing"] as const;
+const SUPPORTED_ASSIGNMENT_TYPES = ["listening_recording", "listening", "writing", "vocabulary_example", "vocabulary_recording"] as const;
 
 const LEGACY_ASSIGNMENT_TYPES = [
   "image_speaking",
@@ -36,6 +46,8 @@ export function normalizeAssignmentType(value: string | null | undefined): Assig
 
 export function assignmentTypeLabel(value: string | null | undefined) {
   const type = normalizeAssignmentType(value);
+  if (type === "vocabulary_example") return "단어장 예문";
+  if (type === "vocabulary_recording") return "단어장 녹음";
   if (type === "writing") return "라이팅";
   if (type === "listening") return "리스닝";
   return "RL 녹음";
@@ -57,6 +69,8 @@ export function assignmentSubjectForType() {
 
 export function itemTypeForAssignmentType(value: string | null | undefined): AssignmentItemType {
   const type = normalizeAssignmentType(value);
+  if (type === "vocabulary_example") return "vocabulary_example";
+  if (type === "vocabulary_recording") return "vocabulary_recording";
   if (type === "writing") return "writing_prompt";
   return type;
 }
@@ -65,7 +79,13 @@ export function normalizeAssignmentItemType(
   itemType: string | null | undefined,
   assignmentType?: string | null,
 ): AssignmentItemType {
-  if (itemType === "listening" || itemType === "listening_recording" || itemType === "writing_prompt") return itemType;
+  if (
+    itemType === "listening" ||
+    itemType === "listening_recording" ||
+    itemType === "writing_prompt" ||
+    itemType === "vocabulary_example" ||
+    itemType === "vocabulary_recording"
+  ) return itemType;
   return itemTypeForAssignmentType(assignmentType);
 }
 

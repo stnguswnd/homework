@@ -6,6 +6,8 @@ import { normalizeAssignmentType } from "@/lib/assignmentTypes";
 import { getStudentSession } from "@/server/auth/studentSession";
 import { ListeningHomework } from "./ListeningHomework";
 import { RlRecordingHomework } from "./RlRecordingHomework";
+import { VocabularyExampleHomework } from "./VocabularyExampleHomework";
+import { VocabularyRecordingHomework } from "./VocabularyRecordingHomework";
 import { WritingHomework } from "./WritingHomework";
 
 export default async function StudentAssignmentPage({ params }: { params: Promise<{ assignmentId: string }> }) {
@@ -30,6 +32,22 @@ export default async function StudentAssignmentPage({ params }: { params: Promis
     return (
       <StudentLayout title="라이팅 숙제">
         <WritingHomework assignment={{ ...assignment, assignmentType }} />
+      </StudentLayout>
+    );
+  }
+
+  if (assignmentType === "vocabulary_example") {
+    return (
+      <StudentLayout title="단어장 예문 숙제">
+        <VocabularyExampleHomework assignment={{ ...assignment, assignmentType }} />
+      </StudentLayout>
+    );
+  }
+
+  if (assignmentType === "vocabulary_recording") {
+    return (
+      <StudentLayout title="단어장 녹음 숙제">
+        <VocabularyRecordingHomework assignment={{ ...assignment, assignmentType }} />
       </StudentLayout>
     );
   }

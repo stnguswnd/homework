@@ -58,6 +58,26 @@ type AssignmentRow = {
   teacher_comment: string | null;
   created_at: Date;
   items: ItemRow[] | null;
+  vocabulary_items: Array<{
+    id: string;
+    assignment_id: string;
+    word: string;
+    meaning: string;
+    order_index: number;
+  }> | null;
+  submission_vocabulary_items: Array<{
+    id: string;
+    submission_id: string;
+    assignment_vocabulary_item_id: string;
+    original_answer_text: string | null;
+    ai_corrected_text: string | null;
+    ai_feedback: string | null;
+    ai_grammar_notes: string | null;
+    ai_feedback_raw: unknown;
+    revised_answer_text: string | null;
+    teacher_comment: string | null;
+    status: "draft" | "submitted" | "reviewed" | "returned";
+  }> | null;
 };
 
 async function signedUrl(bucket: string, path: string | null) {
@@ -115,6 +135,26 @@ async function mapAssignmentWithSignedUrls(row: AssignmentRow): Promise<Assignme
     reviewedAt: row.reviewed_at?.toISOString(),
     teacherComment: row.teacher_comment ?? undefined,
     submissionId: row.submission_id ?? undefined,
+    vocabularyItems: (row.vocabulary_items ?? []).map((item) => ({
+      id: item.id,
+      assignmentId: item.assignment_id,
+      word: item.word,
+      meaning: item.meaning,
+      orderIndex: item.order_index,
+    })),
+    submissionVocabularyItems: (row.submission_vocabulary_items ?? []).map((item) => ({
+      id: item.id,
+      submissionId: item.submission_id,
+      assignmentVocabularyItemId: item.assignment_vocabulary_item_id,
+      originalAnswerText: item.original_answer_text ?? undefined,
+      aiCorrectedText: item.ai_corrected_text ?? undefined,
+      aiFeedback: item.ai_feedback ?? undefined,
+      aiGrammarNotes: item.ai_grammar_notes ?? undefined,
+      aiFeedbackRaw: item.ai_feedback_raw ?? undefined,
+      revisedAnswerText: item.revised_answer_text ?? undefined,
+      teacherComment: item.teacher_comment ?? undefined,
+      status: item.status,
+    })),
     createdAt: row.created_at.toISOString(),
     items,
   };
@@ -172,6 +212,48 @@ export const studentAssignmentRepository = {
             ) filter (where ai.id is not null),
             '[]'::json
           ) as items
+          ,
+          coalesce(
+            (
+              select json_agg(
+                json_build_object(
+                  'id', avi.id,
+                  'assignment_id', avi.assignment_id,
+                  'word', avi.word,
+                  'meaning', avi.meaning,
+                  'order_index', avi.order_index
+                )
+                order by avi.order_index
+              )
+              from assignment_vocabulary_items avi
+              where avi.assignment_id = a.id
+            ),
+            '[]'::json
+          ) as vocabulary_items,
+          coalesce(
+            (
+              select json_agg(
+                json_build_object(
+                  'id', svi.id,
+                  'submission_id', svi.submission_id,
+                  'assignment_vocabulary_item_id', svi.assignment_vocabulary_item_id,
+                  'original_answer_text', svi.original_answer_text,
+                  'ai_corrected_text', svi.ai_corrected_text,
+                  'ai_feedback', svi.ai_feedback,
+                  'ai_grammar_notes', svi.ai_grammar_notes,
+                  'ai_feedback_raw', svi.ai_feedback_raw,
+                  'revised_answer_text', svi.revised_answer_text,
+                  'teacher_comment', svi.teacher_comment,
+                  'status', svi.status
+                )
+                order by avi.order_index
+              )
+              from submission_vocabulary_items svi
+              join assignment_vocabulary_items avi on avi.id = svi.assignment_vocabulary_item_id
+              where svi.submission_id = sub.id
+            ),
+            '[]'::json
+          ) as submission_vocabulary_items
         from assignment_targets at
         join assignments a on a.id = at.assignment_id and a.teacher_id = $2
         left join assignment_items ai on ai.assignment_id = a.id

@@ -310,10 +310,14 @@ try {
           ('assignment-2', 'teacher-1', 'class-b', 'Reading Plus Shadowing 03', 'Practice natural sentence shadowing.', 'listening_recording', 'Phonics', '2026-05-28T14:59:00.000Z', 'published'),
           ('assignment-3', 'teacher-1', 'reading-a', 'Elementary Reading A Listening Practice', 'Listen to the passage and complete the homework.', 'listening', 'Phonics', '2026-05-30T14:59:00.000Z', 'published'),
           ('assignment-4', 'teacher-1', 'class-a', '4 Paragraph Weekend Writing', 'Write about your weekend and get AI feedback.', 'writing', 'Phonics', '2026-05-31T14:59:00.000Z', 'published'),
+          ('assignment-5', 'teacher-1', 'class-a', 'Unit 3 Vocabulary Sentence Writing', 'Write a sentence using a given vocabulary.', 'vocabulary_example', 'SL', '2026-06-01T14:59:00.000Z', 'published'),
+          ('assignment-6', 'teacher-1', 'class-a', 'Unit 3 Vocabulary Reading', 'Read out loud and record.', 'vocabulary_recording', 'SL', '2026-06-02T14:59:00.000Z', 'published'),
           ('hw_1', 'teacher-1', null, 'Discovery Unit 1 Speaking Homework', 'Listen and record the passage.', 'listening_recording', 'Phonics', null, 'draft'),
           ('hw_2', 'teacher-1', null, 'Reading Plus Shadowing 03', 'Practice natural sentence shadowing.', 'listening_recording', 'Phonics', null, 'draft'),
           ('hw_3', 'teacher-1', null, 'Listening Completion Practice', 'Listen to the MP3 and mark the homework complete.', 'listening', 'Phonics', null, 'draft'),
-          ('hw_4', 'teacher-1', null, '4 Paragraph Writing Practice', 'Write, receive AI feedback, revise, and submit.', 'writing', 'Phonics', null, 'draft')
+          ('hw_4', 'teacher-1', null, '4 Paragraph Writing Practice', 'Write, receive AI feedback, revise, and submit.', 'writing', 'Phonics', null, 'draft'),
+          ('hw_5', 'teacher-1', null, 'Unit 3 Vocabulary Sentence Writing', 'Write a sentence using a given vocabulary.', 'vocabulary_example', 'SL', null, 'draft'),
+          ('hw_6', 'teacher-1', null, 'Unit 3 Vocabulary Reading', 'Read out loud and record.', 'vocabulary_recording', 'SL', null, 'draft')
         on conflict (id) do update set
           title = excluded.title,
           description = excluded.description,
@@ -337,10 +341,14 @@ try {
           ('item-2', 'assignment-2', 'listening_recording', 'My Busy Morning', 'Every morning, I pack my bag, eat breakfast, and walk to school.', '/mock-audio/native-sample.m4a', 'native-sample.m4a', 1, 3, 90, null, null, 4, null, null, null, null),
           ('item-3', 'assignment-3', 'listening', 'Reading A Audio Check', 'Listen carefully and complete the homework after the audio ends.', '/mock-audio/native-sample.m4a', 'native-sample.m4a', 1, 0, 0, null, null, 4, null, null, null, null),
           ('item-4', 'assignment-4', 'writing_prompt', 'Weekend Writing', null, null, null, 1, 0, 0, 'topic_diary', 'paragraphs', 4, 'Write about your weekend.', 'Use past tense and write clearly.', 'Think about where you went, what you did, and how you felt.', 'I went to the park with my family. We played soccer and ate lunch together. I felt happy because the weather was sunny.'),
+          ('item-5', 'assignment-5', 'vocabulary_example', 'Vocabulary Sentence Writing', null, null, null, 1, 0, 0, null, null, 4, 'Write a sentence using a given vocabulary.', 'Use one complete English sentence for each word.', 'Think about the word meaning before writing.', 'I read a book in the library.'),
+          ('item-6', 'assignment-6', 'vocabulary_recording', 'Vocabulary Reading', null, null, null, 1, 10, 120, null, null, 4, 'Read out loud and record.', 'Read every word in order and speak clearly.', null, null),
           ('hw_1-item-1', 'hw_1', 'listening_recording', 'A Day at the Museum', 'I went to the museum with my family. We saw old paintings, shiny stones, and a big dinosaur.', null, null, 1, 3, 120, null, null, 4, null, null, null, null),
           ('hw_2-item-1', 'hw_2', 'listening_recording', 'My Busy Morning', 'Every morning, I pack my bag, eat breakfast, and walk to school.', null, null, 1, 3, 90, null, null, 4, null, null, null, null),
           ('hw_3-item-1', 'hw_3', 'listening', 'Listening Completion', 'Listen to the MP3 and complete the homework.', null, null, 1, 0, 0, null, null, 4, null, null, null, null),
-          ('hw_4-item-1', 'hw_4', 'writing_prompt', 'Writing Prompt', null, null, null, 1, 0, 0, 'topic_diary', 'paragraphs', 4, 'Write about your favorite food.', 'Write simple and complete sentences.', 'Use because to explain your reason.', 'My favorite food is pizza because it is cheesy and delicious.')
+          ('hw_4-item-1', 'hw_4', 'writing_prompt', 'Writing Prompt', null, null, null, 1, 0, 0, 'topic_diary', 'paragraphs', 4, 'Write about your favorite food.', 'Write simple and complete sentences.', 'Use because to explain your reason.', 'My favorite food is pizza because it is cheesy and delicious.'),
+          ('hw_5-item-1', 'hw_5', 'vocabulary_example', 'Vocabulary Sentence Writing', null, null, null, 1, 0, 0, null, null, 4, 'Write a sentence using a given vocabulary.', 'Use one complete English sentence for each word.', 'Think about the word meaning before writing.', 'I read a book in the library.'),
+          ('hw_6-item-1', 'hw_6', 'vocabulary_recording', 'Vocabulary Reading', null, null, null, 1, 10, 120, null, null, 4, 'Read out loud and record.', 'Read every word in order and speak clearly.', null, null)
         on conflict (id) do update set
           item_type = excluded.item_type,
           title = excluded.title,
@@ -356,6 +364,38 @@ try {
           writing_instructions = excluded.writing_instructions,
           writing_hint = excluded.writing_hint,
           writing_example = excluded.writing_example,
+          updated_at = now()
+      `,
+    );
+
+    await pool.query(
+      `
+        insert into assignment_vocabulary_items (id, assignment_id, word, meaning, order_index)
+        values
+          ('vocab-5-1', 'assignment-5', 'apple', '사과', 0),
+          ('vocab-5-2', 'assignment-5', 'library', '도서관', 1),
+          ('vocab-5-3', 'assignment-5', 'happy', '행복한', 2),
+          ('vocab-5-4', 'assignment-5', 'mountain', '산', 3),
+          ('vocab-5-5', 'assignment-5', 'teacher', '선생님', 4),
+          ('vocab-5-6', 'assignment-5', 'picture', '사진', 5),
+          ('vocab-6-1', 'assignment-6', 'apple', '사과', 0),
+          ('vocab-6-2', 'assignment-6', 'library', '도서관', 1),
+          ('vocab-6-3', 'assignment-6', 'happy', '행복한', 2),
+          ('vocab-6-4', 'assignment-6', 'mountain', '산', 3),
+          ('vocab-6-5', 'assignment-6', 'teacher', '선생님', 4),
+          ('vocab-6-6', 'assignment-6', 'picture', '사진', 5),
+          ('vocab-6-7', 'assignment-6', 'hungry', '배고픈', 6),
+          ('vocab-6-8', 'assignment-6', 'quickly', '빠르게', 7),
+          ('vocab-hw-5-1', 'hw_5', 'apple', '사과', 0),
+          ('vocab-hw-5-2', 'hw_5', 'library', '도서관', 1),
+          ('vocab-hw-5-3', 'hw_5', 'happy', '행복한', 2),
+          ('vocab-hw-6-1', 'hw_6', 'apple', '사과', 0),
+          ('vocab-hw-6-2', 'hw_6', 'library', '도서관', 1),
+          ('vocab-hw-6-3', 'hw_6', 'happy', '행복한', 2)
+        on conflict (id) do update set
+          word = excluded.word,
+          meaning = excluded.meaning,
+          order_index = excluded.order_index,
           updated_at = now()
       `,
     );
@@ -388,7 +428,13 @@ try {
           ('target-22', 'assignment-3', 'reading-a', 'student-22', 'assigned', '2026-05-30T14:59:00.000Z', null, false),
           ('target-23', 'assignment-4', 'class-a', 'student-1', 'assigned', '2026-05-31T14:59:00.000Z', null, false),
           ('target-24', 'assignment-4', 'class-a', 'student-2', 'assigned', '2026-05-31T14:59:00.000Z', null, false),
-          ('target-25', 'assignment-4', 'class-a', 'student-3', 'assigned', '2026-05-31T14:59:00.000Z', null, false)
+          ('target-25', 'assignment-4', 'class-a', 'student-3', 'assigned', '2026-05-31T14:59:00.000Z', null, false),
+          ('target-26', 'assignment-5', 'class-a', 'student-1', 'assigned', '2026-06-01T14:59:00.000Z', null, false),
+          ('target-27', 'assignment-5', 'class-a', 'student-2', 'assigned', '2026-06-01T14:59:00.000Z', null, false),
+          ('target-28', 'assignment-5', 'class-a', 'student-3', 'assigned', '2026-06-01T14:59:00.000Z', null, false),
+          ('target-29', 'assignment-6', 'class-a', 'student-1', 'assigned', '2026-06-02T14:59:00.000Z', null, false),
+          ('target-30', 'assignment-6', 'class-a', 'student-2', 'assigned', '2026-06-02T14:59:00.000Z', null, false),
+          ('target-31', 'assignment-6', 'class-a', 'student-3', 'assigned', '2026-06-02T14:59:00.000Z', null, false)
         on conflict (assignment_id, student_id) do update set
           class_id = excluded.class_id,
           status = excluded.status,

@@ -36,6 +36,13 @@ type AssignmentRow = {
   writing_instructions: string | null;
   writing_hint: string | null;
   writing_example: string | null;
+  vocabulary_items: Array<{
+    id: string;
+    assignment_id: string;
+    word: string;
+    meaning: string;
+    order_index: number;
+  }> | null;
   updated_at: Date;
 };
 
@@ -119,6 +126,13 @@ async function mapAssignment(row: AssignmentRow) {
       writingHint: row.writing_hint ?? "",
       writingExample: row.writing_example ?? "",
     },
+    vocabularyItems: (row.vocabulary_items ?? []).map((item) => ({
+      id: item.id,
+      assignmentId: item.assignment_id,
+      word: item.word,
+      meaning: item.meaning,
+      orderIndex: item.order_index,
+    })),
     updatedAt: row.updated_at.toISOString(),
   };
 }
@@ -152,6 +166,23 @@ async function getAssignmentRow(id: string, teacherId: string) {
         ai.writing_instructions,
         ai.writing_hint,
         ai.writing_example,
+        coalesce(
+          (
+            select json_agg(
+              json_build_object(
+                'id', avi.id,
+                'assignment_id', avi.assignment_id,
+                'word', avi.word,
+                'meaning', avi.meaning,
+                'order_index', avi.order_index
+              )
+              order by avi.order_index
+            )
+            from assignment_vocabulary_items avi
+            where avi.assignment_id = a.id
+          ),
+          '[]'::json
+        ) as vocabulary_items,
         a.updated_at
       from assignments a
       left join assignment_items ai on ai.assignment_id = a.id and ai.order_index = 1
@@ -275,12 +306,16 @@ export async function POST(request: Request) {
   const writingHint = String(formData.get("writingHint") ?? "").trim();
   const writingExample = String(formData.get("writingExample") ?? "").trim();
   const passageText = type === "writing" && promptText ? promptText : rawPassageText;
+  const vocabularyItems = parseVocabularyItems(formData.get("vocabularyItems"));
   const imageFile = formData.get("imageFile");
   const audioFile = formData.get("audioFile");
   const targetAssignments = parseTargetAssignments(formData.get("assignments"));
 
   if (!title) {
     return NextResponse.json({ error: "과제 제목을 입력해 주세요." }, { status: 400 });
+  }
+  if ((type === "vocabulary_example" || type === "vocabulary_recording") && vocabularyItems.length === 0) {
+    return NextResponse.json({ error: "단어를 1개 이상 입력해주세요." }, { status: 400 });
   }
 
   const supabase = createSupabaseAdminClient();
@@ -439,6 +474,19 @@ export async function POST(request: Request) {
       ],
     );
 
+    if (type === "vocabulary_example" || type === "vocabulary_recording") {
+      await client.query("delete from assignment_vocabulary_items where assignment_id = $1", [id]);
+      for (const item of vocabularyItems) {
+        await client.query(
+          `
+            insert into assignment_vocabulary_items (id, assignment_id, word, meaning, order_index)
+            values ($1, $2, $3, $4, $5)
+          `,
+          [`assignment-vocab-${randomUUID()}`, id, item.word, item.meaning, item.orderIndex],
+        );
+      }
+    }
+
     for (const targetAssignment of targetAssignments) {
       const dueAt = toDueAt(targetAssignment.dueDate, targetAssignment.dueTime);
       const students = await findTargetStudents(client, teacherId, targetAssignment);
@@ -498,6 +546,25 @@ function parseTargetAssignments(value: FormDataEntryValue | null): AssignmentTar
     const parsed = JSON.parse(value) as AssignmentTargetInput[];
     if (!Array.isArray(parsed)) return [];
     return parsed.filter((item) => item.classId && item.dueDate);
+  } catch {
+    return [];
+  }
+}
+
+function parseVocabularyItems(value: FormDataEntryValue | null) {
+  if (typeof value !== "string" || !value.trim()) return [];
+  try {
+    const parsed = JSON.parse(value) as Array<{ word?: unknown; meaning?: unknown; orderIndex?: unknown }>;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((item, index) => ({
+        word: String(item.word ?? "").trim(),
+        meaning: String(item.meaning ?? "").trim(),
+        orderIndex: Number.isFinite(Number(item.orderIndex)) ? Number(item.orderIndex) : index,
+      }))
+      .filter((item) => item.word && item.meaning)
+      .slice(0, 200)
+      .map((item, index) => ({ ...item, orderIndex: index }));
   } catch {
     return [];
   }

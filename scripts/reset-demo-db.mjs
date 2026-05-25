@@ -62,6 +62,7 @@ try {
   for (const file of [
     "database/assignment_target_management.sql",
     "database/finalize_assignment_types_and_writing.sql",
+    "database/vocabulary_assignments.sql",
     "database/calendar_notice_test.sql",
     "database/performance_indexes.sql",
   ]) {

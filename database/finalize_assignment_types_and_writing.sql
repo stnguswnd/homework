@@ -25,7 +25,7 @@ alter table assignment_items add constraint assignment_items_writing_unit_check
 
 update assignments
 set assignment_type = 'listening_recording'
-where assignment_type not in ('listening_recording', 'listening', 'writing');
+where assignment_type not in ('listening_recording', 'listening', 'writing', 'vocabulary_example', 'vocabulary_recording');
 
 update assignments
 set assignment_subject = 'Phonics'
@@ -45,8 +45,8 @@ where item_type not in ('listening_recording', 'listening', 'writing_prompt');
 
 alter table assignments drop constraint if exists assignments_assignment_type_check;
 alter table assignments add constraint assignments_assignment_type_check
-  check (assignment_type in ('listening_recording', 'listening', 'writing'));
+  check (assignment_type in ('listening_recording', 'listening', 'writing', 'vocabulary_example', 'vocabulary_recording'));
 
 alter table assignment_items drop constraint if exists assignment_items_item_type_check;
 alter table assignment_items add constraint assignment_items_item_type_check
-  check (item_type in ('listening_recording', 'listening', 'writing_prompt'));
+  check (item_type in ('listening_recording', 'listening', 'writing_prompt', 'vocabulary_example', 'vocabulary_recording'));

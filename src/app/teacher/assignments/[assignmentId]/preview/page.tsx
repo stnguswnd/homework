@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Textarea } from "@/components/ui/Textarea";
 import { useAudioRecorder } from "@/hooks/useAudioRecorder";
-import { assignmentSubjectLabel, assignmentTypeLabel, normalizeAssignmentType } from "@/lib/assignmentTypes";
+import { assignmentTypeLabel, normalizeAssignmentType } from "@/lib/assignmentTypes";
 
 type TeacherAssignmentPreview = {
   id: string;
@@ -34,6 +34,7 @@ type TeacherAssignmentPreview = {
     writingHint?: string;
     writingExample?: string;
   };
+  vocabularyItems?: Array<{ id: string; word: string; meaning: string; orderIndex: number }>;
 };
 
 type AiPreview = {
@@ -54,7 +55,7 @@ export default function TeacherAssignmentPreviewPage() {
   const [assignment, setAssignment] = useState<TeacherAssignmentPreview | null>(null);
   const [error, setError] = useState("");
   const normalizedType = assignment ? normalizeAssignmentType(assignment.type) : null;
-  const normalizedAssignment = assignment && normalizedType ? { ...assignment, type: normalizedType, subject: assignment.subject || assignmentSubjectLabel(normalizedType) } : null;
+  const normalizedAssignment = assignment && normalizedType ? { ...assignment, type: normalizedType } : null;
 
   useEffect(() => {
     fetch(`/api/teacher/assignments?id=${assignmentId}`, { cache: "no-store" })
@@ -76,6 +77,8 @@ export default function TeacherAssignmentPreviewPage() {
       {normalizedAssignment?.type === "listening_recording" && <RlPreview assignment={normalizedAssignment} />}
       {normalizedAssignment?.type === "listening" && <ListeningPreview assignment={normalizedAssignment} />}
       {normalizedAssignment?.type === "writing" && <WritingPreview assignment={normalizedAssignment} />}
+      {normalizedAssignment?.type === "vocabulary_example" && <VocabularyPreview assignment={normalizedAssignment} mode="example" />}
+      {normalizedAssignment?.type === "vocabulary_recording" && <VocabularyPreview assignment={normalizedAssignment} mode="recording" />}
     </TeacherLayout>
   );
 }
@@ -84,13 +87,43 @@ function Header({ assignment }: { assignment: TeacherAssignmentPreview }) {
   return (
     <Card className="shadow-soft">
       <div className="flex flex-wrap gap-2">
-        <Badge tone="blue">{assignment.subject || assignmentSubjectLabel(assignment.type)}</Badge>
+        <Badge tone="blue">{assignment.subject || "Phonics"}</Badge>
         <Badge tone="green">{assignmentTypeLabel(assignment.type)}</Badge>
         <Badge>{assignment.status}</Badge>
       </div>
       <h1 className="mt-4 text-2xl font-bold">{assignment.title}</h1>
       {assignment.description && <p className="mt-2 leading-7 text-slate-600">{assignment.description}</p>}
     </Card>
+  );
+}
+
+function VocabularyPreview({ assignment, mode }: { assignment: TeacherAssignmentPreview; mode: "example" | "recording" }) {
+  return (
+    <div className="grid gap-4">
+      <Header assignment={assignment} />
+      <Card>
+        <p className="text-sm font-bold text-action">{mode === "example" ? "Vocabulary Sentence Writing" : "Vocabulary Reading"}</p>
+        <h2 className="mt-2 text-lg font-bold">{assignment.item.passageText || (mode === "example" ? "Write a sentence using a given vocabulary." : "Read out loud and record.")}</h2>
+      </Card>
+      <Card>
+        <h2 className="font-bold">단어장</h2>
+        <div className="mt-4 grid gap-2 sm:grid-cols-2">
+          {(assignment.vocabularyItems ?? []).map((item) => (
+            <div key={item.id} className="grid grid-cols-2 rounded-md border border-line">
+              <span className="border-r border-line px-3 py-2 font-bold">{item.word}</span>
+              <span className="px-3 py-2">{item.meaning}</span>
+            </div>
+          ))}
+        </div>
+      </Card>
+      <Card>
+        <p className="text-sm text-slate-600">
+          {mode === "example"
+            ? "학생 화면에서는 단어별로 문장 작성, AI 첨삭, 다시 쓰기를 진행합니다."
+            : "학생 화면에서는 단어장을 보며 전체를 한 번에 녹음하고 제출합니다."}
+        </p>
+      </Card>
+    </div>
   );
 }
 

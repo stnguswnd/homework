@@ -33,6 +33,19 @@ type SubmissionDetail = {
     aiGrammarNotes?: string;
     aiExpressionNotes?: string;
   }>;
+  vocabularyItems?: Array<{
+    id: string;
+    word: string;
+    meaning: string;
+    orderIndex: number;
+    originalAnswerText?: string;
+    aiCorrectedText?: string;
+    aiFeedback?: string;
+    aiGrammarNotes?: string;
+    revisedAnswerText?: string;
+    teacherComment?: string;
+    status?: string;
+  }>;
   status: string;
   submittedAt?: string;
   dueAt?: string;
@@ -110,6 +123,8 @@ export function SubmissionReviewPanel({ detail }: { detail: SubmissionDetail }) 
       {assignmentType === "listening_recording" && <RecordingReview items={detail.items} />}
       {assignmentType === "listening" && <ListeningReview submittedAt={detail.submittedAt} />}
       {assignmentType === "writing" && <WritingReview items={detail.items} />}
+      {assignmentType === "vocabulary_example" && <VocabularyExampleReview vocabularyItems={detail.vocabularyItems ?? []} />}
+      {assignmentType === "vocabulary_recording" && <VocabularyRecordingReview items={detail.items} vocabularyItems={detail.vocabularyItems ?? []} />}
 
       <Card>
         <h3 className="text-lg font-bold">선생님 최종 피드백</h3>
@@ -134,6 +149,68 @@ export function SubmissionReviewPanel({ detail }: { detail: SubmissionDetail }) 
           </Button>
         </div>
       </Card>
+    </div>
+  );
+}
+
+function VocabularyExampleReview({ vocabularyItems }: { vocabularyItems: NonNullable<SubmissionDetail["vocabularyItems"]> }) {
+  return (
+    <Card>
+      <h3 className="text-lg font-bold">단어장 예문 제출</h3>
+      <div className="mt-4 grid gap-3">
+        {vocabularyItems.map((item, index) => (
+          <article key={item.id} className="rounded-lg border border-line p-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge>{index + 1}</Badge>
+              <p className="text-lg font-extrabold">{item.word}</p>
+              <p className="text-slate-500">{item.meaning}</p>
+            </div>
+            <div className="mt-4 grid gap-3 lg:grid-cols-3">
+              <TextBlock title="처음 쓴 문장" value={item.originalAnswerText} />
+              <TextBlock title="AI 첨삭문" value={item.aiCorrectedText} tone="blue" />
+              <TextBlock title="다시 쓴 글" value={item.revisedAnswerText} tone="green" />
+            </div>
+            <div className="mt-3 rounded-md bg-paper p-3">
+              <p className="font-bold">AI 피드백</p>
+              <p className="mt-2 whitespace-pre-wrap text-sm leading-6">{item.aiFeedback ?? "-"}</p>
+              {item.aiGrammarNotes && <p className="mt-2 whitespace-pre-wrap text-sm leading-6"><strong>문법 교정사항</strong><br />{item.aiGrammarNotes}</p>}
+            </div>
+          </article>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function VocabularyRecordingReview({ items, vocabularyItems }: { items: SubmissionDetail["items"]; vocabularyItems: NonNullable<SubmissionDetail["vocabularyItems"]> }) {
+  return (
+    <div className="grid gap-4">
+      <Card>
+        <h3 className="text-lg font-bold">단어장</h3>
+        <div className="mt-4 grid gap-2 sm:grid-cols-2">
+          {vocabularyItems.map((item) => (
+            <div key={item.id} className="grid grid-cols-2 rounded-md border border-line">
+              <span className="border-r border-line px-3 py-2 font-bold">{item.word}</span>
+              <span className="px-3 py-2">{item.meaning}</span>
+            </div>
+          ))}
+        </div>
+      </Card>
+      <RecordingReview items={items} />
+    </div>
+  );
+}
+
+function TextBlock({ title, value, tone }: { title: string; value?: string; tone?: "blue" | "green" }) {
+  const classes = tone === "blue"
+    ? "rounded-md border border-blue-100 bg-blue-50 p-4"
+    : tone === "green"
+      ? "rounded-md border border-green-100 bg-green-50 p-4"
+      : "rounded-md border border-line p-4";
+  return (
+    <div className={classes}>
+      <p className="font-bold">{title}</p>
+      <p className="mt-2 whitespace-pre-wrap leading-7 text-slate-700">{value ?? "-"}</p>
     </div>
   );
 }
