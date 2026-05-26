@@ -368,11 +368,12 @@ export async function getStudentVisibleNotices(studentId: string, teacherId: str
       from notices n
       join notice_targets nt on nt.notice_id = n.id
       left join class_memberships cm on cm.class_id = nt.class_id
+      left join classes c on c.id = nt.class_id and c.teacher_id = n.teacher_id and c.status = 'active'
       where n.teacher_id = $2
         and n.status = 'published'
         and (
           nt.target_type = 'all'
-          or (nt.target_type = 'class' and cm.student_id = $1)
+          or (nt.target_type = 'class' and cm.student_id = $1 and c.id is not null)
           or (nt.target_type = 'student' and nt.student_id = $1)
         )
       order by n.published_at desc nulls last, n.created_at desc
@@ -391,8 +392,13 @@ export async function getStudentCalendarEvents(studentId: string, teacherId: str
         count(distinct at.assignment_id)::int as count
       from assignment_targets at
       join assignments a on a.id = at.assignment_id
+      left join classes c on c.id = coalesce(at.class_id, a.class_id) and c.teacher_id = a.teacher_id
       where at.student_id = $1
         and a.teacher_id = $2
+        and (
+          coalesce(at.class_id, a.class_id) is null
+          or c.status = 'active'
+        )
         and coalesce(at.due_at, a.due_at)::date between $3::date and $4::date
       group by coalesce(at.due_at, a.due_at)::date
     `,
@@ -409,7 +415,7 @@ export async function getStudentCalendarEvents(studentId: string, teacherId: str
         e.class_id,
         c.name as class_name
       from class_calendar_events e
-      join classes c on c.id = e.class_id
+      join classes c on c.id = e.class_id and c.status = 'active'
       join class_memberships cm on cm.class_id = e.class_id
       where cm.student_id = $1
         and e.teacher_id = $2
@@ -445,6 +451,7 @@ export async function getStudentUpcomingTests(studentId: string, teacherId: stri
       select distinct t.*
       from tests t
       join class_memberships cm on cm.class_id = t.class_id
+      join classes c on c.id = t.class_id and c.teacher_id = t.teacher_id and c.status = 'active'
       where cm.student_id = $1
         and t.teacher_id = $2
         and t.status = 'scheduled'
@@ -469,6 +476,7 @@ export async function getStudentTestResults(studentId: string, teacherId: string
       select tr.*, t.title, t.subject, t.test_date
       from test_results tr
       join tests t on t.id = tr.test_id
+      join classes c on c.id = tr.class_id and c.teacher_id = tr.teacher_id and c.status = 'active'
       where tr.student_id = $1 and tr.teacher_id = $2
       order by coalesce(tr.taken_at, t.test_date) desc
       limit 10

@@ -96,7 +96,7 @@ async function getStudentProfile(studentId: string, teacherId: string) {
         coalesce(array_remove(array_agg(c.name order by c.name), null), array[]::text[]) as class_names
       from students s
       left join class_memberships cm on cm.student_id = s.id
-      left join classes c on c.id = cm.class_id and c.teacher_id = s.teacher_id
+      left join classes c on c.id = cm.class_id and c.teacher_id = s.teacher_id and c.status = 'active'
       where s.id = $1 and s.teacher_id = $2
       group by s.id
     `,

@@ -101,6 +101,39 @@ export async function PATCH(request: Request, { params }: Params) {
   const name = body?.name?.trim();
   const description = body?.description?.trim() || null;
 
+  if (body && "status" in body) {
+    if (body.status !== "active") {
+      return NextResponse.json({ error: "지원하지 않는 반 상태입니다." }, { status: 400 });
+    }
+
+    try {
+      const result = await query(
+        `
+          update classes
+          set status = 'active',
+              updated_at = now()
+          where id = $1
+            and teacher_id = $2
+            and status = 'archived'
+          returning id, teacher_id, name, description, status, created_at, updated_at
+        `,
+        [classId, teacherId],
+      );
+
+      if (!result.rows[0]) {
+        return NextResponse.json({ error: "재활성화할 비활성 반을 찾을 수 없습니다." }, { status: 404 });
+      }
+
+      return NextResponse.json({ class: result.rows[0] });
+    } catch (error) {
+      if ((error as { code?: string }).code === "23505") {
+        return NextResponse.json({ error: "같은 이름의 활성 반이 있어 재활성화할 수 없습니다." }, { status: 409 });
+      }
+      console.error(error);
+      return NextResponse.json({ error: "반을 재활성화하지 못했습니다." }, { status: 500 });
+    }
+  }
+
   if (!name) {
     return NextResponse.json({ error: "반 이름을 입력해주세요." }, { status: 400 });
   }

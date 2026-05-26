@@ -22,6 +22,7 @@ type CalendarEvent = { id: string; eventType: string; title: string; description
 type ScheduleDay = { id: string; date: string; startTime?: string | null; endTime?: string | null; bookTitle?: string | null; progressTitle?: string | null };
 type TestRow = { id: string; title: string; subject: string; testDate: string; scope?: string | null; status: string; resultCount: number; passCount: number; nonpassCount: number };
 type TestResultRow = { studentId: string; studentName: string; score: number | null; maxScore: number; result: "PASS" | "NonPASS"; teacherMemo: string; takenAt?: string | null };
+type ClassItem = { name: string; description?: string | null; status?: "active" | "archived" };
 type DeletePreview = { deleted: boolean; archived: boolean; reason: "no_history" | "has_history" };
 
 const tabs: Array<{ id: Tab; label: string }> = [
@@ -75,7 +76,7 @@ export default function ClassDetailPage() {
   const { classId } = useParams<{ classId: string }>();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<Tab>("overview");
-  const [classItem, setClassItem] = useState<{ name: string; description?: string } | null>(null);
+  const [classItem, setClassItem] = useState<ClassItem | null>(null);
   const [students, setStudents] = useState<StudentRow[]>([]);
   const [assignments, setAssignments] = useState<AssignmentRow[]>([]);
   const [scheduleDays, setScheduleDays] = useState<ScheduleDay[]>([]);
@@ -84,6 +85,7 @@ export default function ClassDetailPage() {
   const [tests, setTests] = useState<TestRow[]>([]);
   const [message, setMessage] = useState("");
   const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isReactivateOpen, setIsReactivateOpen] = useState(false);
   const [deleteActionPreview, setDeleteActionPreview] = useState<DeletePreview | null>(null);
   const [deletePreview, setDeletePreview] = useState<DeletePreview | null>(null);
   const [isDeletePending, startDeleteTransition] = useTransition();
@@ -143,6 +145,24 @@ export default function ClassDetailPage() {
     await loadAll();
   }
 
+  async function reactivateClass() {
+    const response = await fetch(`/api/teacher/classes/${classId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "active" }),
+    });
+    const data = await response.json().catch(() => null);
+    if (!response.ok) {
+      setMessage(data?.error ?? "반을 재활성화하지 못했습니다.");
+      setIsReactivateOpen(false);
+      return;
+    }
+
+    setIsReactivateOpen(false);
+    window.sessionStorage.setItem("classDeleteMessage", "반이 재활성화되었습니다.");
+    router.push("/teacher/classes");
+  }
+
   async function openDeleteModal() {
     const response = await fetch(`/api/teacher/classes/${classId}?deletePreview=1`, { cache: "no-store" });
     const data = await response.json();
@@ -190,9 +210,13 @@ export default function ClassDetailPage() {
             </div>
             <div className="flex flex-wrap gap-2">
               <Button variant="secondary" onClick={() => setIsEditOpen(true)}>반 수정하기</Button>
-              <Button variant="danger" onClick={openDeleteModal}>
-                {deleteActionPreview?.archived ? "반 비활성화" : "반 삭제"}
-              </Button>
+              {classItem?.status === "archived" ? (
+                <Button onClick={() => setIsReactivateOpen(true)}>반 재활성화</Button>
+              ) : (
+                <Button variant="danger" onClick={openDeleteModal}>
+                  {deleteActionPreview?.archived ? "반 비활성화" : "반 삭제"}
+                </Button>
+              )}
             </div>
           </div>
         </Card>
@@ -225,6 +249,12 @@ export default function ClassDetailPage() {
             classItem={classItem}
             onClose={() => setIsEditOpen(false)}
             onSubmit={updateClass}
+          />
+        )}
+        {isReactivateOpen && (
+          <ClassReactivateModal
+            onClose={() => setIsReactivateOpen(false)}
+            onConfirm={reactivateClass}
           />
         )}
         {deletePreview && <ClassDeleteModal preview={deletePreview} isPending={isDeletePending} onClose={() => setDeletePreview(null)} onConfirm={deleteClass} />}
@@ -289,6 +319,28 @@ function ClassEditModal({
           <Button type="submit">저장</Button>
         </div>
       </form>
+    </Modal>
+  );
+}
+
+function ClassReactivateModal({
+  onClose,
+  onConfirm,
+}: {
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <Modal title="이 반을 다시 활성화하시겠습니까?" onClose={onClose}>
+      <div className="grid gap-4">
+        <p className="text-sm leading-6 text-slate-700">
+          기존 학생 배정과 학습 기록은 그대로 유지됩니다. 재활성화하면 반 관리 목록에 다시 표시됩니다.
+        </p>
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>취소</Button>
+          <Button onClick={onConfirm}>반 재활성화</Button>
+        </div>
+      </div>
     </Modal>
   );
 }
@@ -369,8 +421,8 @@ function HomeworkTab({ assignments }: { classId: string; assignments: Assignment
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <Button href={`/teacher/assignments/${assignment.id}/submissions`} variant="secondary">
-                    제출 현황
+                  <Button href={`/teacher/assignments/${assignment.id}/targets`} variant="secondary">
+                    배정 관리
                   </Button>
                   <Button href={`/teacher/assignments/new?assignmentId=${assignment.id}`} variant="secondary">
                     수정
