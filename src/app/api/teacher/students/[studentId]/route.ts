@@ -74,7 +74,7 @@ async function findStudent(teacherId: string, studentId: string) {
 async function validateClassIds(client: { query: typeof postgresPool.query }, teacherId: string, classIds: string[]) {
   const uniqueClassIds = Array.from(new Set(classIds.filter(Boolean)));
   if (uniqueClassIds.length === 0) {
-    return { valid: false, classIds: uniqueClassIds, error: "학생을 배정할 반을 최소 1개 선택해주세요." };
+    return { valid: true, classIds: uniqueClassIds, error: null };
   }
 
   const result = await client.query<{ id: string }>(

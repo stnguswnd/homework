@@ -21,6 +21,7 @@ type HomeworkItem = {
 type ClassOverview = {
   class_id: string;
   class_name: string;
+  class_status: "active" | "archived";
   student_count: number;
   assigned_count: number;
   submitted_count: number;
@@ -39,18 +40,26 @@ const subjectOrder = ["전체", ...ASSIGNMENT_SUBJECTS];
 
 export default function ClassesPage() {
   const [classes, setClasses] = useState<ClassOverview[]>([]);
+  const [statusFilter, setStatusFilter] = useState<"active" | "archived">("active");
   const [selectedSubjects, setSelectedSubjects] = useState<Record<string, string>>({});
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
   async function loadClasses() {
-    const response = await fetch("/api/teacher/classes/overview", { cache: "no-store" });
+    const response = await fetch(`/api/teacher/classes/overview?status=${statusFilter}`, { cache: "no-store" });
     const data = await response.json();
     setClasses(data.classes ?? []);
   }
 
   useEffect(() => {
     loadClasses().catch(() => setClasses([]));
+  }, [statusFilter]);
+
+  useEffect(() => {
+    const deleteMessage = window.sessionStorage.getItem("classDeleteMessage");
+    if (!deleteMessage) return;
+    window.sessionStorage.removeItem("classDeleteMessage");
+    setMessage(deleteMessage);
   }, []);
 
   async function createClass(formData: FormData) {
@@ -94,6 +103,23 @@ export default function ClassesPage() {
 
       {message && <p className="mb-4 rounded-md bg-blue-50 px-4 py-3 text-sm font-semibold text-action">{message}</p>}
 
+      <div className="mb-5 flex gap-2 border-b border-line">
+        <button
+          type="button"
+          className={statusFilter === "active" ? "border-b-2 border-action px-3 py-2 text-sm font-bold text-action" : "border-b-2 border-transparent px-3 py-2 text-sm font-bold text-slate-500"}
+          onClick={() => setStatusFilter("active")}
+        >
+          활성 반
+        </button>
+        <button
+          type="button"
+          className={statusFilter === "archived" ? "border-b-2 border-action px-3 py-2 text-sm font-bold text-action" : "border-b-2 border-transparent px-3 py-2 text-sm font-bold text-slate-500"}
+          onClick={() => setStatusFilter("archived")}
+        >
+          비활성 반
+        </button>
+      </div>
+
       <div className="grid gap-5 lg:grid-cols-2 2xl:grid-cols-3">
         {classes.map((classItem) => (
           <ClassStatusCard
@@ -105,7 +131,7 @@ export default function ClassesPage() {
         ))}
         {classes.length === 0 && (
           <Card className="w-full">
-            <p className="text-sm text-slate-500">아직 생성된 반이 없습니다. 먼저 반을 만들어주세요.</p>
+            <p className="text-sm text-slate-500">{statusFilter === "active" ? "아직 생성된 활성 반이 없습니다. 먼저 반을 만들어주세요." : "비활성 반이 없습니다."}</p>
           </Card>
         )}
       </div>
@@ -193,6 +219,7 @@ function ClassStatusCard({
         <div>
           <h2 className="text-xl font-bold">{classItem.class_name}</h2>
           <p className="mt-1 text-sm font-semibold text-slate-500">학생 {classItem.student_count}명</p>
+          {classItem.class_status === "archived" && <Badge tone="gray">비활성</Badge>}
         </div>
       </div>
 

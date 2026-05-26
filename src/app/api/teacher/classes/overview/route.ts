@@ -9,6 +9,7 @@ export const runtime = "nodejs";
 type Row = {
   class_id: string;
   class_name: string;
+  class_status: "active" | "archived";
   student_id: string | null;
   student_name: string | null;
   assignment_id: string | null;
@@ -37,6 +38,7 @@ type StudentOverview = {
 type ClassOverview = {
   class_id: string;
   class_name: string;
+  class_status: "active" | "archived";
   student_count: number;
   assigned_count: number;
   submitted_count: number;
@@ -46,13 +48,16 @@ type ClassOverview = {
   students: StudentOverview[];
 };
 
-export async function GET() {
+export async function GET(request: Request) {
   const { teacherId } = await requireTeacherSession();
+  const url = new URL(request.url);
+  const status = url.searchParams.get("status") === "archived" ? "archived" : "active";
   const result = await query<Row>(
     `
       select
         c.id as class_id,
         c.name as class_name,
+        c.status as class_status,
         s.id as student_id,
         s.name as student_name,
         a.id as assignment_id,
@@ -68,10 +73,10 @@ export async function GET() {
       left join assignment_targets at on at.student_id = s.id and at.class_id = c.id
       left join assignments a on a.id = at.assignment_id and a.teacher_id = c.teacher_id
       left join submissions sub on sub.assignment_id = a.id and sub.student_id = s.id
-      where c.teacher_id = $1 and c.status = 'active'
+      where c.teacher_id = $1 and c.status = $2
       order by c.created_at asc, s.name asc, a.updated_at desc nulls last
     `,
-    [teacherId],
+    [teacherId, status],
   );
 
   const classes = new Map<string, ClassOverview>();
@@ -84,10 +89,11 @@ export async function GET() {
   for (const row of result.rows) {
     let classItem = classes.get(row.class_id);
     if (!classItem) {
-      classItem = {
-        class_id: row.class_id,
-        class_name: row.class_name,
-        student_count: 0,
+        classItem = {
+          class_id: row.class_id,
+          class_name: row.class_name,
+          class_status: row.class_status,
+          student_count: 0,
         assigned_count: 0,
         submitted_count: 0,
         missing_count: 0,

@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 
 import { TeacherLayout } from "@/components/layout/TeacherLayout";
 import { Badge } from "@/components/ui/Badge";
@@ -22,6 +22,7 @@ type CalendarEvent = { id: string; eventType: string; title: string; description
 type ScheduleDay = { id: string; date: string; startTime?: string | null; endTime?: string | null; bookTitle?: string | null; progressTitle?: string | null };
 type TestRow = { id: string; title: string; subject: string; testDate: string; scope?: string | null; status: string; resultCount: number; passCount: number; nonpassCount: number };
 type TestResultRow = { studentId: string; studentName: string; score: number | null; maxScore: number; result: "PASS" | "NonPASS"; teacherMemo: string; takenAt?: string | null };
+type DeletePreview = { deleted: boolean; archived: boolean; reason: "no_history" | "has_history" };
 
 const tabs: Array<{ id: Tab; label: string }> = [
   { id: "overview", label: "개요" },
@@ -72,6 +73,7 @@ function buildMonthDays(anchor = "2026-05-01") {
 
 export default function ClassDetailPage() {
   const { classId } = useParams<{ classId: string }>();
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<Tab>("overview");
   const [classItem, setClassItem] = useState<{ name: string; description?: string } | null>(null);
   const [students, setStudents] = useState<StudentRow[]>([]);
@@ -81,6 +83,8 @@ export default function ClassDetailPage() {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [tests, setTests] = useState<TestRow[]>([]);
   const [message, setMessage] = useState("");
+  const [deletePreview, setDeletePreview] = useState<DeletePreview | null>(null);
+  const [isDeletePending, startDeleteTransition] = useTransition();
 
   async function loadAll() {
     const [classData, studentData, assignmentData, scheduleData, noticeData, eventData, testData] = await Promise.all([
@@ -110,6 +114,38 @@ export default function ClassDetailPage() {
     await loadAll();
   }
 
+  async function openDeleteModal() {
+    const response = await fetch(`/api/teacher/classes/${classId}?deletePreview=1`, { cache: "no-store" });
+    const data = await response.json();
+    if (!response.ok) {
+      setMessage(data.error ?? "반 삭제 상태를 확인하지 못했습니다.");
+      return;
+    }
+    setDeletePreview(data);
+  }
+
+  function deleteClass() {
+    startDeleteTransition(async () => {
+      const response = await fetch(`/api/teacher/classes/${classId}`, { method: "DELETE" });
+      const data = await response.json();
+      if (!response.ok) {
+        setMessage(data.error ?? "반 삭제 처리 중 오류가 발생했습니다.");
+        setDeletePreview(null);
+        return;
+      }
+
+      setDeletePreview(null);
+      if (data.deleted) {
+        window.sessionStorage.setItem("classDeleteMessage", "반이 삭제되었습니다. 학생은 유지되고 반 배정만 해제되었습니다.");
+        router.push("/teacher/classes");
+        return;
+      }
+
+      setMessage("반이 비활성 처리되었습니다. 기존 기록은 유지됩니다.");
+      await loadAll();
+    });
+  }
+
   return (
     <TeacherLayout title={classItem?.name ?? "반 상세"}>
       <div className="grid gap-4">
@@ -122,6 +158,7 @@ export default function ClassDetailPage() {
                 학생 {students.length}명 · 숙제 {assignments.length}개 · 예정 시험 {tests.filter((test) => test.status === "scheduled").length}개 · 공유 일정 {events.length + scheduleDays.length}개
               </p>
             </div>
+            <Button variant="danger" onClick={openDeleteModal}>반 삭제</Button>
           </div>
         </Card>
 
@@ -148,8 +185,40 @@ export default function ClassDetailPage() {
         {activeTab === "homework" && <HomeworkTab classId={classId} assignments={assignments} />}
         {activeTab === "schedule" && <ScheduleTab classId={classId} scheduleDays={scheduleDays} events={events} onChanged={refresh} />}
         {activeTab === "tests" && <TestsTab classId={classId} students={students} tests={tests} onChanged={refresh} />}
+        {deletePreview && <ClassDeleteModal preview={deletePreview} isPending={isDeletePending} onClose={() => setDeletePreview(null)} onConfirm={deleteClass} />}
       </div>
     </TeacherLayout>
+  );
+}
+
+function ClassDeleteModal({
+  preview,
+  isPending,
+  onClose,
+  onConfirm,
+}: {
+  preview: DeletePreview;
+  isPending: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  const title = preview.deleted ? "이 반을 완전히 삭제하시겠습니까?" : "이 반은 비활성 처리됩니다.";
+  const message = preview.deleted
+    ? "학생은 삭제되지 않고, 이 반과의 배정만 해제됩니다. 아직 숙제/제출/수업 기록이 없어 완전 삭제할 수 있습니다."
+    : "이 반에는 숙제/제출/수업 기록이 있어 완전히 삭제할 수 없습니다. 반은 비활성 처리되어 활성 반 목록에서 숨겨지고, 학생과 기존 기록은 유지됩니다.";
+
+  return (
+    <Modal title={title} onClose={onClose}>
+      <div className="grid gap-4">
+        <p className="text-sm leading-6 text-slate-700">{message}</p>
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>취소</Button>
+          <Button variant={preview.deleted ? "danger" : "primary"} onClick={onConfirm} disabled={isPending}>
+            {isPending ? "처리 중..." : preview.deleted ? "완전 삭제" : "비활성 처리"}
+          </Button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

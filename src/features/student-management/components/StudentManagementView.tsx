@@ -72,11 +72,34 @@ export function StudentManagementView({ initialStudents }: { initialStudents: Ma
 
   async function loadClasses() {
     const response = await fetch("/api/teacher/classes", { cache: "no-store" });
+    if (response.status === 401) {
+      window.location.href = "/login";
+      return;
+    }
     const items = response.ok ? await response.json() as Class[] : [];
     setClasses(items.filter((classItem) => classItem.status === "active"));
   }
 
+  async function loadStudents() {
+    const response = await fetch("/api/teacher/students", { cache: "no-store" });
+    if (response.status === 401) {
+      window.location.href = "/login";
+      return;
+    }
+    if (!response.ok) {
+      throw new Error("학생 목록을 불러오지 못했습니다.");
+    }
+
+    const items = await response.json() as ManagedStudent[];
+    setStudents(items);
+    setSelectedStudentId((current) => {
+      if (current && items.some((student) => student.id === current)) return current;
+      return items[0]?.id ?? null;
+    });
+  }
+
   useEffect(() => {
+    loadStudents().catch(() => setToast("학생 목록을 불러오지 못했습니다."));
     loadClasses().catch(() => setClasses([]));
   }, []);
 
@@ -98,10 +121,6 @@ export function StudentManagementView({ initialStudents }: { initialStudents: Ma
     if (!selectedStudent) return;
     if ("name" in input && !input.name?.trim()) {
       setToast("학생 이름을 입력해주세요.");
-      return;
-    }
-    if (input.classIds && input.classIds.length === 0) {
-      setToast("배정할 반을 최소 1개 선택해주세요.");
       return;
     }
     const nextStudents = await studentRepository.updateStudent(selectedStudent.id, input, students);
@@ -131,11 +150,6 @@ export function StudentManagementView({ initialStudents }: { initialStudents: Ma
 
   async function createStudent(formData: FormData) {
     const classIds = formData.getAll("classIds").map(String).filter(Boolean);
-    if (classIds.length === 0) {
-      setToast("배정할 반을 최소 1개 선택해주세요.");
-      return;
-    }
-
     const created = await studentRepository.createStudent({
       name: String(formData.get("name") ?? "").trim(),
       studentId: String(formData.get("studentId") ?? "").trim(),
@@ -537,14 +551,12 @@ function CreateStudentModal({
   onClose: () => void;
   onSubmit: (formData: FormData) => void;
 }) {
-  const hasClasses = classes.length > 0;
-
   return (
     <Modal title="학생 등록" onClose={onClose}>
       <form action={onSubmit} className="grid gap-4">
-        {!hasClasses && (
-          <div className="rounded-md bg-red-50 px-3 py-2 text-sm font-semibold text-danger">
-            아직 생성된 반이 없습니다. 먼저 반 관리에서 반을 만들어주세요.
+        {classes.length === 0 && (
+          <div className="rounded-md bg-blue-50 px-3 py-2 text-sm font-semibold text-action">
+            아직 생성된 반이 없습니다. 학생은 미배정 상태로 등록할 수 있습니다.
             <div className="mt-3">
               <Button href="/teacher/classes" variant="secondary">반 관리로 이동</Button>
             </div>
@@ -565,7 +577,7 @@ function CreateStudentModal({
         <label className="grid gap-2 text-sm font-semibold">메모<Textarea name="memo" /></label>
         <div className="flex justify-end gap-2">
           <Button type="button" variant="secondary" onClick={onClose}>취소</Button>
-          <Button type="submit" disabled={!hasClasses}>등록</Button>
+          <Button type="submit">등록</Button>
         </div>
       </form>
     </Modal>
