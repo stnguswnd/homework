@@ -5,6 +5,7 @@ const toneClasses = {
   green: "bg-green-50 text-green-700",
   yellow: "bg-yellow-50 text-yellow-800",
   red: "bg-red-50 text-red-700",
+  purple: "bg-purple-50 text-purple-700",
   gray: "bg-slate-100 text-slate-700"
 };
 

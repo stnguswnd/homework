@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import type { PoolClient } from "pg";
 
 import type { CalendarItem, CalendarItemType } from "@/lib/calendarTypes";
+import { getDatesByWeekdays } from "@/lib/dateTime";
 import { query } from "@/lib/postgres";
 
 export type NoticeStatus = "draft" | "published" | "hidden" | "archived";
@@ -22,6 +23,18 @@ export type CalendarEventInput = {
   title?: string;
   description?: string | null;
   eventDate?: string;
+  startTime?: string | null;
+  endTime?: string | null;
+  status?: "active" | "cancelled" | "hidden";
+};
+
+export type BulkCalendarEventInput = {
+  eventType?: CalendarEventType;
+  title?: string;
+  description?: string | null;
+  startDate?: string;
+  endDate?: string;
+  weekdays?: number[];
   startTime?: string | null;
   endTime?: string | null;
   status?: "active" | "cancelled" | "hidden";
@@ -155,6 +168,53 @@ export async function createCalendarEvent(teacherId: string, classId: string, in
     [id, teacherId, classId, eventType, title, input.description || null, eventDate, input.startTime || null, input.endTime || null, input.status ?? "active"],
   );
   return id;
+}
+
+export async function createCalendarEvents(teacherId: string, classId: string, input: BulkCalendarEventInput) {
+  const title = input.title?.trim();
+  const eventType = input.eventType ?? "class";
+  const weekdays = Array.isArray(input.weekdays) ? input.weekdays : [];
+  if (eventType !== "class") throw new Error("정규수업만 일괄 생성할 수 있습니다.");
+  if (!title || !input.startDate || !input.endDate || !input.startTime || !input.endTime || weekdays.length === 0) {
+    throw new Error("시작일, 종료일, 요일, 시간, 제목을 입력해주세요.");
+  }
+  const dates = getDatesByWeekdays(input.startDate, input.endDate, weekdays);
+  if (dates.length === 0) throw new Error("선택한 기간과 요일에 해당하는 날짜가 없습니다.");
+  if (dates.length > 80) throw new Error("한 번에 생성할 수 있는 정규수업은 최대 80개입니다.");
+
+  let createdCount = 0;
+  let skippedCount = 0;
+  for (const eventDate of dates) {
+    const duplicate = await query(
+      `
+        select id
+        from class_calendar_events
+        where teacher_id = $1
+          and class_id = $2
+          and event_type = $3
+          and event_date = $4::date
+          and coalesce(start_time::text, '') = coalesce($5::text, '')
+          and coalesce(end_time::text, '') = coalesce($6::text, '')
+          and status <> 'hidden'
+        limit 1
+      `,
+      [teacherId, classId, eventType, eventDate, input.startTime || null, input.endTime || null],
+    );
+    if (duplicate.rows[0]) {
+      skippedCount += 1;
+      continue;
+    }
+    await query(
+      `
+        insert into class_calendar_events (id, teacher_id, class_id, event_type, title, description, event_date, start_time, end_time, status)
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      `,
+      [`event-${randomUUID()}`, teacherId, classId, eventType, title, input.description || null, eventDate, input.startTime || null, input.endTime || null, input.status ?? "active"],
+    );
+    createdCount += 1;
+  }
+
+  return { createdCount, skippedCount, requestedCount: dates.length };
 }
 
 export async function getClassCalendarEvents(teacherId: string, classId: string, start?: string, end?: string) {
@@ -361,7 +421,9 @@ export async function getTeacherTests(teacherId: string, classId?: string) {
       from tests t
       left join classes c on c.id = t.class_id
       left join test_results tr on tr.test_id = t.id
-      where t.teacher_id = $1 and ($2::text is null or t.class_id = $2)
+      where t.teacher_id = $1
+        and t.status <> 'hidden'
+        and ($2::text is null or t.class_id = $2)
       group by t.id, c.name
       order by t.test_date asc
     `,
@@ -398,7 +460,8 @@ export async function updateTest(teacherId: string, testId: string, input: TestI
 }
 
 export async function deleteTest(teacherId: string, testId: string) {
-  await query("update tests set status = 'hidden', updated_at = now() where id = $1 and teacher_id = $2", [testId, teacherId]);
+  const result = await query("update tests set status = 'hidden', updated_at = now() where id = $1 and teacher_id = $2 returning id", [testId, teacherId]);
+  if (!result.rows[0]) throw new Error("시험을 찾을 수 없습니다.");
 }
 
 export async function getTestResults(teacherId: string, testId: string) {

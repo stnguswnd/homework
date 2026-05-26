@@ -266,7 +266,10 @@ export default function AssignmentTargetsPage() {
           <h1 className="mt-1 text-3xl font-extrabold tracking-normal text-ink">숙제 배정 관리</h1>
           <p className="mt-2 text-sm text-slate-500">현재 배정 현황을 확인하고, 학생 추가/마감일 변경/미제출 학생 배정 취소를 처리합니다.</p>
         </div>
-        <Button href="/teacher/assignments" variant="secondary">← 숙제 목록으로 돌아가기</Button>
+        <div className="flex flex-wrap gap-2">
+          <Button href={`/teacher/assignments/new?assignmentId=${assignmentId}`} variant="secondary">과제 수정</Button>
+          <Button href="/teacher/assignments" variant="secondary">← 숙제 목록으로 돌아가기</Button>
+        </div>
       </div>
 
       {message && <p className="mb-4 rounded-md bg-blue-50 px-3 py-2 text-sm font-semibold text-action">{message}</p>}

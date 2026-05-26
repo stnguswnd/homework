@@ -12,6 +12,7 @@ import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Textarea } from "@/components/ui/Textarea";
+import { ClassScheduleForm } from "@/features/classes/ClassScheduleForm";
 import { formatTimeRange } from "@/lib/calendarTypes";
 import { cn } from "@/lib/utils";
 
@@ -577,7 +578,7 @@ function ScheduleTab({ classId, events, tests, assignments, onChanged }: { class
         </div>
       </div>
 
-      {isOpen && <ScheduleModal classId={classId} event={editingEvent} onClose={() => setIsOpen(false)} onSaved={() => { setIsOpen(false); setEditingEvent(null); onChanged("일정을 저장했습니다."); }} />}
+      {isOpen && <ClassScheduleForm classId={classId} event={editingEvent} onClose={() => setIsOpen(false)} onSaved={(message) => { setIsOpen(false); setEditingEvent(null); onChanged(message ?? "일정을 저장했습니다."); }} />}
     </Card>
   );
 }

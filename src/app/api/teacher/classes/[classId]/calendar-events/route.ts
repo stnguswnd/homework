@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { assertClass, createCalendarEvent, getClassCalendarEvents } from "@/lib/dashboardData";
+import { assertClass, createCalendarEvent, createCalendarEvents, getClassCalendarEvents } from "@/lib/dashboardData";
 import { requireTeacherSession } from "@/server/teacher/session";
 
 export const runtime = "nodejs";
@@ -20,6 +20,10 @@ export async function POST(request: Request, context: { params: Promise<{ classI
   if (!(await assertClass(teacherId, classId))) return NextResponse.json({ error: "반을 찾을 수 없습니다." }, { status: 404 });
   try {
     const body = await request.json();
+    if (body?.mode === "weekday_bulk") {
+      const result = await createCalendarEvents(teacherId, classId, body);
+      return NextResponse.json(result, { status: 201 });
+    }
     const eventId = await createCalendarEvent(teacherId, classId, body);
     return NextResponse.json({ eventId }, { status: 201 });
   } catch (error) {

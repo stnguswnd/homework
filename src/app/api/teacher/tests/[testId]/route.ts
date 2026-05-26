@@ -15,6 +15,10 @@ export async function PATCH(request: Request, context: { params: Promise<{ testI
 export async function DELETE(_request: Request, context: { params: Promise<{ testId: string }> }) {
   const { teacherId } = await requireTeacherSession();
   const { testId } = await context.params;
-  await deleteTest(teacherId, testId);
-  return NextResponse.json({ ok: true });
+  try {
+    await deleteTest(teacherId, testId);
+    return NextResponse.json({ ok: true, deleted: true });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "시험 삭제 중 오류가 발생했습니다." }, { status: 404 });
+  }
 }
