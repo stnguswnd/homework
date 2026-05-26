@@ -388,11 +388,18 @@ export async function getStudentCalendarEvents(studentId: string, teacherId: str
   const homework = await query(
     `
       select
+        at.assignment_id,
         coalesce(at.due_at, a.due_at)::date as date,
-        count(distinct at.assignment_id)::int as count
+        a.title,
+        a.assignment_subject,
+        coalesce(at.status, sub.status, 'assigned') as target_status,
+        sub.submitted_at,
+        coalesce(at.class_id, a.class_id) as class_id,
+        c.name as class_name
       from assignment_targets at
       join assignments a on a.id = at.assignment_id
       left join classes c on c.id = coalesce(at.class_id, a.class_id) and c.teacher_id = a.teacher_id
+      left join submissions sub on sub.assignment_id = at.assignment_id and sub.student_id = at.student_id
       where at.student_id = $1
         and a.teacher_id = $2
         and (
@@ -400,7 +407,8 @@ export async function getStudentCalendarEvents(studentId: string, teacherId: str
           or c.status = 'active'
         )
         and coalesce(at.due_at, a.due_at)::date between $3::date and $4::date
-      group by coalesce(at.due_at, a.due_at)::date
+        and at.status <> 'cancelled'
+      order by coalesce(at.due_at, a.due_at)::date asc, c.name asc nulls last, a.title asc
     `,
     [studentId, teacherId, start, end],
   );
@@ -428,11 +436,14 @@ export async function getStudentCalendarEvents(studentId: string, teacherId: str
 
   return [
     ...homework.rows.map((row) => ({
-      id: `assignment-${row.date}`,
+      id: `assignment-${row.assignment_id}`,
       date: row.date instanceof Date ? row.date.toISOString().slice(0, 10) : String(row.date),
       type: "assignment",
-      title: `숙제 ${row.count}개`,
-      count: row.count,
+      title: row.title,
+      classId: row.class_id,
+      className: row.class_name,
+      subject: row.assignment_subject,
+      status: row.submitted_at || row.target_status === "submitted" ? "submitted" : row.target_status,
     })),
     ...events.rows.map((row) => ({
       id: row.id,

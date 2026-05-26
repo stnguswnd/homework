@@ -12,6 +12,8 @@ export type StudentCalendarEvent = {
   title: string;
   type: "assignment" | "test" | "cancelled" | "makeup" | "class" | "notice" | "etc";
   count?: number;
+  subject?: string;
+  status?: string;
   className?: string;
 };
 
@@ -55,6 +57,20 @@ function eventTone(type: StudentCalendarEvent["type"]): "blue" | "green" | "yell
   if (type === "cancelled") return "red";
   if (type === "makeup") return "green";
   if (type === "class") return "blue";
+  return "gray";
+}
+
+function assignmentStatusLabel(status?: string) {
+  if (status === "submitted" || status === "reviewed") return "제출 완료";
+  if (status === "returned") return "반려";
+  if (status === "late") return "마감 지남";
+  return "미제출";
+}
+
+function assignmentStatusTone(status?: string): "green" | "yellow" | "red" | "gray" {
+  if (status === "submitted" || status === "reviewed") return "green";
+  if (status === "returned") return "red";
+  if (status === "late") return "yellow";
   return "gray";
 }
 
@@ -145,6 +161,12 @@ export function StudentCalendarClient({ events }: { events: StudentCalendarEvent
                     {event.className && <span className="text-xs font-semibold text-slate-500">{event.className}</span>}
                   </div>
                   <p className="mt-2 text-sm font-bold text-ink">{event.title}</p>
+                  {event.type === "assignment" && (
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      {event.subject && <Badge tone="blue">{event.subject}</Badge>}
+                      <Badge tone={assignmentStatusTone(event.status)}>{assignmentStatusLabel(event.status)}</Badge>
+                    </div>
+                  )}
                   {typeof event.count === "number" && <p className="mt-1 text-xs font-semibold text-slate-500">총 {event.count}개</p>}
                 </article>
               ))}
