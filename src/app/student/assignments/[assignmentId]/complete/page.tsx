@@ -12,7 +12,7 @@ import { getStudentSession } from "@/server/auth/studentSession";
 
 function statusLabel(status?: string) {
   if (status === "reviewed" || status === "completed") return "완료";
-  if (status === "returned" || status === "rejected") return "미완료";
+  if (status === "returned") return "반려";
   if (status === "late") return "지각 제출";
   if (status === "submitted") return "검토 대기";
   return "제출 완료";
@@ -189,7 +189,7 @@ export default async function CompletePage({ params }: { params: Promise<{ assig
         <div className="grid gap-3 sm:grid-cols-3">
           <Button href="/student/home" variant="secondary" className="min-h-12">과제 목록으로</Button>
           <Button href={`/student/assignments/${assignmentId}`} variant="secondary" className="min-h-12">과제 안내 보기</Button>
-          {(assignment.targetStatus === "returned" || assignment.targetStatus === "rejected") && (
+          {assignment.targetStatus === "returned" && (
             <Button href={`/student/assignments/${assignmentId}`} className="min-h-12">다시 제출하기</Button>
           )}
         </div>

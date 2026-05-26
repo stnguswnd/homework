@@ -83,6 +83,7 @@ export default function ClassDetailPage() {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [tests, setTests] = useState<TestRow[]>([]);
   const [message, setMessage] = useState("");
+  const [isEditOpen, setIsEditOpen] = useState(false);
   const [deletePreview, setDeletePreview] = useState<DeletePreview | null>(null);
   const [isDeletePending, startDeleteTransition] = useTransition();
 
@@ -111,6 +112,26 @@ export default function ClassDetailPage() {
 
   async function refresh(msg: string) {
     setMessage(msg);
+    await loadAll();
+  }
+
+  async function updateClass(formData: FormData) {
+    const response = await fetch(`/api/teacher/classes/${classId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: String(formData.get("name") ?? "").trim(),
+        description: String(formData.get("description") ?? "").trim(),
+      }),
+    });
+    const data = await response.json().catch(() => null);
+    if (!response.ok) {
+      setMessage(data?.error ?? "반 정보를 수정하지 못했습니다.");
+      return;
+    }
+
+    setIsEditOpen(false);
+    setMessage("반 정보를 수정했습니다.");
     await loadAll();
   }
 
@@ -158,7 +179,10 @@ export default function ClassDetailPage() {
                 학생 {students.length}명 · 숙제 {assignments.length}개 · 예정 시험 {tests.filter((test) => test.status === "scheduled").length}개 · 공유 일정 {events.length + scheduleDays.length}개
               </p>
             </div>
-            <Button variant="danger" onClick={openDeleteModal}>반 삭제</Button>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="secondary" onClick={() => setIsEditOpen(true)}>반 수정하기</Button>
+              <Button variant="danger" onClick={openDeleteModal}>반 삭제</Button>
+            </div>
           </div>
         </Card>
 
@@ -185,6 +209,13 @@ export default function ClassDetailPage() {
         {activeTab === "homework" && <HomeworkTab classId={classId} assignments={assignments} />}
         {activeTab === "schedule" && <ScheduleTab classId={classId} scheduleDays={scheduleDays} events={events} onChanged={refresh} />}
         {activeTab === "tests" && <TestsTab classId={classId} students={students} tests={tests} onChanged={refresh} />}
+        {isEditOpen && classItem && (
+          <ClassEditModal
+            classItem={classItem}
+            onClose={() => setIsEditOpen(false)}
+            onSubmit={updateClass}
+          />
+        )}
         {deletePreview && <ClassDeleteModal preview={deletePreview} isPending={isDeletePending} onClose={() => setDeletePreview(null)} onConfirm={deleteClass} />}
       </div>
     </TeacherLayout>
@@ -218,6 +249,35 @@ function ClassDeleteModal({
           </Button>
         </div>
       </div>
+    </Modal>
+  );
+}
+
+function ClassEditModal({
+  classItem,
+  onClose,
+  onSubmit,
+}: {
+  classItem: { name: string; description?: string | null };
+  onClose: () => void;
+  onSubmit: (formData: FormData) => void;
+}) {
+  return (
+    <Modal title="반 정보 수정" onClose={onClose}>
+      <form action={onSubmit} className="grid gap-4">
+        <label className="grid gap-2 text-sm font-semibold">
+          반 이름
+          <Input name="name" required defaultValue={classItem.name} />
+        </label>
+        <label className="grid gap-2 text-sm font-semibold">
+          설명
+          <Textarea name="description" defaultValue={classItem.description ?? ""} />
+        </label>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={onClose}>취소</Button>
+          <Button type="submit">저장</Button>
+        </div>
+      </form>
     </Modal>
   );
 }

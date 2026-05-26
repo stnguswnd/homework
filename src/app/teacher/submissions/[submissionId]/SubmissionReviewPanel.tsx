@@ -9,61 +9,20 @@ import { Card } from "@/components/ui/Card";
 import { Textarea } from "@/components/ui/Textarea";
 import { assignmentSubjectLabel, assignmentTypeLabel, normalizeAssignmentType, writingModeLabel, writingUnitLabel } from "@/lib/assignmentTypes";
 import { formatDateTime } from "@/lib/format";
+import type { TeacherSubmissionDetail } from "@/server/teacher/submissionDetail";
 
-type SubmissionDetail = {
-  submissionId: string;
-  student: { id: string; name: string; schoolName?: string; grade?: string; classNames?: string[] };
-  assignment: { id: string; title: string; assignmentType: string };
-  items: Array<{
-    assignmentItemId: string;
-    title?: string;
-    passageText?: string;
-    audioUrl?: string;
-    recordingUrl?: string;
-    recordingDurationSec?: number;
-    recordingFileName?: string;
-    writingMode?: string;
-    writingUnit?: string;
-    writingUnitCount?: number;
-    promptText?: string;
-    originalAnswerText?: string;
-    answerText?: string;
-    aiCorrectedText?: string;
-    aiFeedback?: string;
-    aiGrammarNotes?: string;
-    aiExpressionNotes?: string;
-  }>;
-  vocabularyItems?: Array<{
-    id: string;
-    word: string;
-    meaning: string;
-    orderIndex: number;
-    originalAnswerText?: string;
-    aiCorrectedText?: string;
-    aiFeedback?: string;
-    aiGrammarNotes?: string;
-    revisedAnswerText?: string;
-    teacherComment?: string;
-    status?: string;
-  }>;
-  status: string;
-  submittedAt?: string;
-  dueAt?: string;
-  isLate?: boolean;
-  reviewedAt?: string;
-  teacherComment?: string;
-};
+type SubmissionDetail = TeacherSubmissionDetail;
 
 function statusLabel(status: string) {
   if (status === "reviewed" || status === "completed") return "완료";
-  if (status === "returned" || status === "rejected") return "미완료";
+  if (status === "returned") return "반려";
   if (status === "submitted" || status === "late") return "검토 대기";
   return status;
 }
 
 function statusTone(status: string) {
   if (status === "reviewed" || status === "completed") return "green";
-  if (status === "returned" || status === "rejected") return "red";
+  if (status === "returned") return "red";
   return "blue";
 }
 
@@ -74,7 +33,7 @@ export function SubmissionReviewPanel({ detail }: { detail: SubmissionDetail }) 
   const [message, setMessage] = useState("");
   const [pendingStatus, setPendingStatus] = useState<"reviewed" | "returned" | null>(null);
   const [isPending, startTransition] = useTransition();
-  const assignmentType = normalizeAssignmentType(detail.assignment.assignmentType);
+  const assignmentType = normalizeAssignmentType(detail.assignment?.assignmentType);
 
   function review(nextStatus: "reviewed" | "returned") {
     if (isPending) return;
@@ -94,7 +53,7 @@ export function SubmissionReviewPanel({ detail }: { detail: SubmissionDetail }) 
       }
       setStatus(nextStatus);
       setReviewedAt(data?.reviewedAt ?? new Date().toISOString());
-      setMessage(nextStatus === "reviewed" ? "완료 피드백을 저장했습니다." : "미완료 피드백을 저장했습니다.");
+      setMessage(nextStatus === "reviewed" ? "완료 피드백을 저장했습니다." : "반려 피드백을 저장했습니다.");
     });
   }
 
@@ -138,7 +97,7 @@ export function SubmissionReviewPanel({ detail }: { detail: SubmissionDetail }) 
             onClick={() => review("returned")}
             disabled={isPending}
           >
-            {pendingStatus === "returned" ? "미완료 저장 중..." : status === "returned" ? "미완료 처리됨" : "미완료"}
+            {pendingStatus === "returned" ? "반려 저장 중..." : status === "returned" ? "반려 처리됨" : "반려"}
           </Button>
           <Button
             onClick={() => review("reviewed")}

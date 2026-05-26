@@ -24,7 +24,7 @@ export type StudentLearningHistory = {
   studentId: string;
   date: string;
   assignmentTitle: string;
-  assignmentType: "listening_recording" | "listening" | "writing";
+  assignmentType: "listening_recording" | "listening" | "writing" | "vocabulary_example" | "vocabulary_recording";
   className?: string;
   submitStatus: "submitted" | "not_submitted" | "late";
   score?: number | null;

@@ -9,7 +9,7 @@ const nav = [
   ["학생 관리", "/teacher/students"],
   ["숙제 관리", "/teacher/assignments"],
   ["계정 설정", "/teacher/settings/account"],
-  ["학생 화면", "/student/home"],
+  ["저장소", "/teacher/classes/inactive"],
 ];
 
 export function TeacherLayout({ children, title }: { children: ReactNode; title: string }) {

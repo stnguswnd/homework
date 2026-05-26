@@ -59,7 +59,7 @@ function subjectForAssignment(assignment: AssignmentWithTarget) {
 
 function homeworkStatus(assignment: AssignmentWithTarget) {
   if (assignment.targetStatus === "reviewed" || assignment.targetStatus === "completed") return "completed";
-  if (assignment.targetStatus === "returned" || assignment.targetStatus === "rejected") return "rejected";
+  if (assignment.targetStatus === "returned") return "returned";
   if (assignment.submittedAt || assignment.targetStatus === "submitted" || assignment.targetStatus === "pending_review") return "pending_review";
   return "incomplete";
 }
@@ -67,14 +67,14 @@ function homeworkStatus(assignment: AssignmentWithTarget) {
 function homeworkStatusLabel(status: string) {
   if (status === "pending_review") return "검토대기중";
   if (status === "completed") return "숙제완료";
-  if (status === "rejected") return "반려";
+  if (status === "returned") return "반려";
   return "미완료";
 }
 
 function homeworkStatusTone(status: string): "green" | "yellow" | "red" | "gray" {
   if (status === "pending_review") return "yellow";
   if (status === "completed") return "green";
-  if (status === "rejected") return "red";
+  if (status === "returned") return "red";
   return "gray";
 }
 
@@ -183,8 +183,10 @@ function WeeklyHomeworkSection({ assignments }: { assignments: AssignmentWithTar
 function HomeworkSubjectCard({ assignment }: { assignment: AssignmentWithTarget }) {
   const status = homeworkStatus(assignment);
   const item = assignment.items[0];
-  const needsResubmit = assignment.targetStatus === "returned" || assignment.targetStatus === "rejected";
-  const href = assignment.submittedAt && !needsResubmit ? `/student/assignments/${assignment.id}/complete` : `/student/assignments/${assignment.id}`;
+  const needsResubmit = assignment.targetStatus === "returned";
+  const hasSubmitted = Boolean(assignment.submittedAt);
+  const href = hasSubmitted && !needsResubmit ? `/student/assignments/${assignment.id}/complete` : `/student/assignments/${assignment.id}`;
+  const buttonLabel = needsResubmit ? "다시 제출하기" : hasSubmitted ? "제출 내용 보기" : "숙제하기";
   const homeworkItems = [
     item?.title ?? assignment.title,
     assignment.description ?? assignmentTypeLabel(assignment.assignmentType),
@@ -216,13 +218,13 @@ function HomeworkSubjectCard({ assignment }: { assignment: AssignmentWithTarget 
           <span className="text-sm font-bold">숙제 상태</span>
           <Badge tone={homeworkStatusTone(status)}>{homeworkStatusLabel(status)}</Badge>
         </div>
-        {(status === "completed" || status === "rejected") && assignment.teacherComment && (
+        {(status === "completed" || status === "returned") && assignment.teacherComment && (
           <p className="mt-2 text-sm leading-6 text-slate-700">선생님 메모: {assignment.teacherComment}</p>
         )}
         {assignment.submittedAt && <p className="mt-2 text-xs font-semibold text-slate-500">제출 {formatDateTime(assignment.submittedAt)}</p>}
       </div>
       <Button href={href} className="mt-4 min-h-12 w-full">
-        {needsResubmit ? "다시 제출하기" : "숙제하기"}
+        {buttonLabel}
       </Button>
     </Card>
   );

@@ -90,6 +90,49 @@ export async function GET(request: Request, { params }: Params) {
   return NextResponse.json({ class: result.rows[0] });
 }
 
+export async function PATCH(request: Request, { params }: Params) {
+  const { teacherId } = await requireTeacherSession();
+  const { classId } = await params;
+  const body = await request.json().catch(() => null) as {
+    name?: string;
+    description?: string;
+  } | null;
+
+  const name = body?.name?.trim();
+  const description = body?.description?.trim() || null;
+
+  if (!name) {
+    return NextResponse.json({ error: "반 이름을 입력해주세요." }, { status: 400 });
+  }
+
+  try {
+    const result = await query(
+      `
+        update classes
+        set name = $3,
+            description = $4,
+            updated_at = now()
+        where id = $1
+          and teacher_id = $2
+        returning id, teacher_id, name, description, status, created_at, updated_at
+      `,
+      [classId, teacherId, name, description],
+    );
+
+    if (!result.rows[0]) {
+      return NextResponse.json({ error: "반을 찾을 수 없습니다." }, { status: 404 });
+    }
+
+    return NextResponse.json({ class: result.rows[0] });
+  } catch (error) {
+    if ((error as { code?: string }).code === "23505") {
+      return NextResponse.json({ error: "이미 사용 중인 반 이름입니다." }, { status: 409 });
+    }
+    console.error(error);
+    return NextResponse.json({ error: "반 정보를 수정하지 못했습니다." }, { status: 500 });
+  }
+}
+
 export async function DELETE(_request: Request, { params }: Params) {
   const { teacherId } = await requireTeacherSession();
   const { classId } = await params;
