@@ -6,6 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "check:db": "node scripts/check-db-url.mjs",
     "create:teacher": "node scripts/create-teacher.mjs",
     "seed:auth": "node scripts/seed-auth.mjs",
     "seed:calendar-demo": "node scripts/seed-calendar-notice-demo.mjs",
