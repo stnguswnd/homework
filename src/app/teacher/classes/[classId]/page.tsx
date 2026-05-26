@@ -84,6 +84,7 @@ export default function ClassDetailPage() {
   const [tests, setTests] = useState<TestRow[]>([]);
   const [message, setMessage] = useState("");
   const [isEditOpen, setIsEditOpen] = useState(false);
+  const [deleteActionPreview, setDeleteActionPreview] = useState<DeletePreview | null>(null);
   const [deletePreview, setDeletePreview] = useState<DeletePreview | null>(null);
   const [isDeletePending, startDeleteTransition] = useTransition();
 
@@ -106,8 +107,15 @@ export default function ClassDetailPage() {
     setTests(testData.tests ?? []);
   }
 
+  async function loadDeletePreview() {
+    const response = await fetch(`/api/teacher/classes/${classId}?deletePreview=1`, { cache: "no-store" });
+    const data = await response.json().catch(() => null);
+    if (response.ok) setDeleteActionPreview(data);
+  }
+
   useEffect(() => {
     loadAll().catch(() => undefined);
+    loadDeletePreview().catch(() => setDeleteActionPreview(null));
   }, [classId]);
 
   async function refresh(msg: string) {
@@ -143,6 +151,7 @@ export default function ClassDetailPage() {
       return;
     }
     setDeletePreview(data);
+    setDeleteActionPreview(data);
   }
 
   function deleteClass() {
@@ -181,7 +190,9 @@ export default function ClassDetailPage() {
             </div>
             <div className="flex flex-wrap gap-2">
               <Button variant="secondary" onClick={() => setIsEditOpen(true)}>반 수정하기</Button>
-              <Button variant="danger" onClick={openDeleteModal}>반 삭제</Button>
+              <Button variant="danger" onClick={openDeleteModal}>
+                {deleteActionPreview?.archived ? "반 비활성화" : "반 삭제"}
+              </Button>
             </div>
           </div>
         </Card>
