@@ -38,14 +38,6 @@ limit 1
 on conflict (id) do nothing;
 
 insert into class_calendar_events (id, teacher_id, class_id, event_type, title, description, event_date, status)
-select 'event-sr-vocab-test', c.teacher_id, c.id, 'test', 'SR Vocabulary Test', 'Unit 3 ~ Unit 4', '2026-05-27', 'active'
-from classes c
-where c.teacher_id = 'teacher-1'
-order by c.created_at asc
-limit 1
-on conflict (id) do nothing;
-
-insert into class_calendar_events (id, teacher_id, class_id, event_type, title, description, event_date, status)
 select 'event-friday-cancelled', c.teacher_id, c.id, 'cancelled', '금요일 휴강', '이번 주 금요일 수업은 휴강입니다.', '2026-05-29', 'active'
 from classes c
 where c.teacher_id = 'teacher-1'
@@ -61,11 +53,10 @@ order by c.created_at asc
 limit 1
 on conflict (id) do nothing;
 
-insert into tests (id, teacher_id, class_id, calendar_event_id, title, subject, test_date, scope, status)
-select 'test-sr-vocab', c.teacher_id, c.id, 'event-sr-vocab-test', 'SR Vocabulary Test', 'SR', '2026-05-27', 'Unit 3 ~ Unit 4', 'scheduled'
+insert into tests (id, teacher_id, class_id, title, subject, test_date, start_time, end_time, scope, status)
+select 'test-sr-vocab', c.teacher_id, c.id, 'SR Vocabulary Test', 'SR', '2026-05-27', '16:00', '16:30', 'Unit 3 ~ Unit 4', 'scheduled'
 from classes c
 where c.teacher_id = 'teacher-1'
-  and exists (select 1 from class_calendar_events where id = 'event-sr-vocab-test')
 order by c.created_at asc
 limit 1
 on conflict (id) do nothing;

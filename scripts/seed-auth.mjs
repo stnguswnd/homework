@@ -42,7 +42,6 @@ if (process.env.NODE_ENV === "production" && process.env.ALLOW_DEMO_SEED !== "tr
 }
 
 const pool = new Pool({ connectionString: databaseUrl });
-const schemaSql = readFileSync("database/auth.sql", "utf8");
 
 const users = [
   {
@@ -172,8 +171,6 @@ const scheduleDays = [
 ];
 
 try {
-  await pool.query(schemaSql);
-
   for (const user of users) {
     await pool.query(
       `
@@ -271,24 +268,34 @@ try {
   }
 
   for (const schedule of scheduleDays) {
+    const [id, classId, date, hasClass, startTime, endTime, bookTitle, progressTitle, progressMemo, nextPrep] = schedule;
     await pool.query(
       `
-        insert into class_schedule_days (
-          id, class_id, date, has_class, start_time, end_time,
-          book_title, progress_title, progress_memo, next_prep
+        insert into class_calendar_events (
+          id, teacher_id, class_id, event_type, title, description,
+          event_date, start_time, end_time, status
         )
-        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-        on conflict (class_id, date) do update set
-          has_class = excluded.has_class,
+        values ($1, 'teacher-1', $2, $3, $4, $5, $6, $7, $8, 'active')
+        on conflict (id) do update set
+          event_type = excluded.event_type,
+          title = excluded.title,
+          description = excluded.description,
+          event_date = excluded.event_date,
           start_time = excluded.start_time,
           end_time = excluded.end_time,
-          book_title = excluded.book_title,
-          progress_title = excluded.progress_title,
-          progress_memo = excluded.progress_memo,
-          next_prep = excluded.next_prep,
+          status = excluded.status,
           updated_at = now()
       `,
-      schedule,
+      [
+        id.replace(/^schedule-/, "event-"),
+        classId,
+        hasClass ? "class" : "cancelled",
+        progressTitle || bookTitle || (hasClass ? "수업" : "휴강"),
+        [bookTitle, progressMemo, nextPrep].filter(Boolean).join("\n") || null,
+        date,
+        startTime,
+        endTime,
+      ],
     );
   }
 

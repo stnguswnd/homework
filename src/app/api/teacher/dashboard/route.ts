@@ -1,23 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { getTeacherCalendarItems } from "@/lib/dashboardData";
 import { query } from "@/lib/postgres";
 import { requireTeacherSession } from "@/server/teacher/session";
 
 export const runtime = "nodejs";
-
-type ScheduleRow = {
-  id: string;
-  class_id: string;
-  class_name: string;
-  date: string | Date;
-  start_time: string | null;
-  end_time: string | null;
-  book_title: string | null;
-  progress_title: string | null;
-  progress_memo: string | null;
-  next_prep: string | null;
-  homework_count: number;
-};
 
 type AssignmentSummaryRow = {
   total_assigned: number;
@@ -67,30 +54,8 @@ export async function GET(request: NextRequest) {
   const weekEnd = addDays(weekStart, 6);
   const today = isoDate(new Date());
 
-  const [scheduleResult, summaryResult, classResult] = await Promise.all([
-    query<ScheduleRow>(
-      `
-        select
-          csd.id,
-          c.id as class_id,
-          c.name as class_name,
-          csd.date,
-          csd.start_time::text,
-          csd.end_time::text,
-          csd.book_title,
-          csd.progress_title,
-          csd.progress_memo,
-          csd.next_prep,
-          count(distinct a.id)::int as homework_count
-        from class_schedule_days csd
-        join classes c on c.id = csd.class_id and c.teacher_id = $1
-        left join assignments a on a.schedule_day_id = csd.id and a.teacher_id = $1
-        where csd.date between $2::date and $3::date
-        group by csd.id, c.id
-        order by csd.date, csd.start_time nulls last, c.name
-      `,
-      [teacherId, weekStart, weekEnd],
-    ),
+  const [weeklySchedule, summaryResult, classResult] = await Promise.all([
+    getTeacherCalendarItems(teacherId, weekStart, weekEnd),
     query<AssignmentSummaryRow>(
       `
         select
@@ -146,25 +111,22 @@ export async function GET(request: NextRequest) {
     ),
   ]);
 
-  const weeklySchedule = scheduleResult.rows.map((row) => ({
-    id: row.id,
-    classId: row.class_id,
-    className: row.class_name,
-    date: isoDate(row.date),
-    startTime: row.start_time,
-    endTime: row.end_time,
-    bookTitle: row.book_title,
-    progressTitle: row.progress_title,
-    progressMemo: row.progress_memo,
-    nextPrep: row.next_prep,
-    homeworkCount: row.homework_count,
+  const normalizedSchedule = weeklySchedule.map((item) => ({
+    ...item,
+    classId: item.classId ?? "",
+    className: item.className ?? item.title,
+    bookTitle: item.subject,
+    progressTitle: item.title,
+    progressMemo: item.description,
+    nextPrep: null,
+    homeworkCount: item.targetCount ?? 0,
   }));
 
   return NextResponse.json({
     weekStart,
     weekEnd,
-    todayClasses: weeklySchedule.filter((item) => item.date === today),
-    weeklySchedule,
+    todayClasses: normalizedSchedule.filter((item) => item.date === today),
+    weeklySchedule: normalizedSchedule,
     assignmentSummary: {
       totalAssigned: summaryResult.rows[0]?.total_assigned ?? 0,
       submitted: summaryResult.rows[0]?.submitted ?? 0,

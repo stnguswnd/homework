@@ -4,17 +4,20 @@ import { useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
+import { formatTimeRange, type CalendarItemType } from "@/lib/calendarTypes";
 import { cn } from "@/lib/utils";
 
 export type StudentCalendarEvent = {
   id: string;
   date: string;
   title: string;
-  type: "assignment" | "test" | "cancelled" | "makeup" | "class" | "notice" | "etc";
+  type: CalendarItemType | "assignment" | "cancelled" | "makeup";
   count?: number;
   subject?: string;
   status?: string;
   className?: string;
+  startTime?: string | null;
+  endTime?: string | null;
 };
 
 function buildMonthDays(anchor = "2026-05-01") {
@@ -42,20 +45,20 @@ function monthTitle(value: string) {
 }
 
 function eventLabel(type: StudentCalendarEvent["type"]) {
-  if (type === "assignment") return "숙제";
+  if (type === "assignment" || type === "assignment_due") return "숙제";
   if (type === "test") return "시험";
-  if (type === "cancelled") return "휴강";
-  if (type === "makeup") return "보강";
+  if (type === "cancelled" || type === "cancelled_class") return "휴강";
+  if (type === "makeup" || type === "makeup_class") return "보강";
   if (type === "class") return "수업";
   if (type === "notice") return "공지";
   return "기타";
 }
 
 function eventTone(type: StudentCalendarEvent["type"]): "blue" | "green" | "yellow" | "red" | "gray" {
-  if (type === "assignment") return "blue";
+  if (type === "assignment" || type === "assignment_due") return "blue";
   if (type === "test") return "yellow";
-  if (type === "cancelled") return "red";
-  if (type === "makeup") return "green";
+  if (type === "cancelled" || type === "cancelled_class") return "red";
+  if (type === "makeup" || type === "makeup_class") return "green";
   if (type === "class") return "blue";
   return "gray";
 }
@@ -131,10 +134,10 @@ export function StudentCalendarClient({ events }: { events: StudentCalendarEvent
                           key={event.id}
                           className={cn(
                             "h-2 w-2 rounded-full",
-                            event.type === "cancelled" && "bg-red-500",
+                            (event.type === "cancelled" || event.type === "cancelled_class") && "bg-red-500",
                             event.type === "test" && "bg-yellow-500",
-                            event.type === "makeup" && "bg-green-500",
-                            event.type === "assignment" && "bg-blue-500",
+                            (event.type === "makeup" || event.type === "makeup_class") && "bg-green-500",
+                            (event.type === "assignment" || event.type === "assignment_due") && "bg-blue-500",
                             (event.type === "class" || event.type === "notice" || event.type === "etc") && "bg-slate-400",
                           )}
                         />
@@ -154,22 +157,26 @@ export function StudentCalendarClient({ events }: { events: StudentCalendarEvent
             <p className="mt-3 rounded-md border border-dashed border-line p-4 text-center text-sm text-slate-500">선택한 날짜에 등록된 일정이 없습니다.</p>
           ) : (
             <div className="mt-3 grid gap-2">
-              {selectedEvents.map((event) => (
-                <article key={event.id} className="rounded-md border border-line bg-slate-50 px-3 py-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge tone={eventTone(event.type)}>{eventLabel(event.type)}</Badge>
-                    {event.className && <span className="text-xs font-semibold text-slate-500">{event.className}</span>}
-                  </div>
-                  <p className="mt-2 text-sm font-bold text-ink">{event.title}</p>
-                  {event.type === "assignment" && (
-                    <div className="mt-2 flex flex-wrap items-center gap-2">
-                      {event.subject && <Badge tone="blue">{event.subject}</Badge>}
-                      <Badge tone={assignmentStatusTone(event.status)}>{assignmentStatusLabel(event.status)}</Badge>
+              {selectedEvents.map((event) => {
+                const timeRange = formatTimeRange(event.startTime, event.endTime, "");
+                return (
+                  <article key={event.id} className="rounded-md border border-line bg-slate-50 px-3 py-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge tone={eventTone(event.type)}>{eventLabel(event.type)}</Badge>
+                      {event.className && <span className="text-xs font-semibold text-slate-500">{event.className}</span>}
                     </div>
-                  )}
-                  {typeof event.count === "number" && <p className="mt-1 text-xs font-semibold text-slate-500">총 {event.count}개</p>}
-                </article>
-              ))}
+                    <p className="mt-2 text-sm font-bold text-ink">{event.title}</p>
+                    {event.type === "test" && <p className="mt-1 text-xs font-semibold text-slate-500">{timeRange || "시간 미정"}</p>}
+                    {(event.type === "assignment" || event.type === "assignment_due") && (
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        {event.subject && <Badge tone="blue">{event.subject}</Badge>}
+                        <Badge tone={assignmentStatusTone(event.status)}>{assignmentStatusLabel(event.status)}</Badge>
+                      </div>
+                    )}
+                    {typeof event.count === "number" && <p className="mt-1 text-xs font-semibold text-slate-500">총 {event.count}개</p>}
+                  </article>
+                );
+              })}
             </div>
           )}
         </div>

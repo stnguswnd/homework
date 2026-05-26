@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Textarea } from "@/components/ui/Textarea";
+import type { CalendarItem } from "@/lib/calendarTypes";
 
 type DashboardData = {
   weekStart: string;
@@ -18,18 +19,14 @@ type DashboardData = {
   classCards: Array<{ classId: string; className: string; studentCount: number; assignedCount: number; submittedCount: number; missingCount: number; needsReviewCount: number }>;
 };
 
-type ScheduleItem = {
-  id: string;
+type ScheduleItem = Omit<CalendarItem, "classId" | "className"> & {
   classId: string;
   className: string;
-  date: string;
-  startTime: string | null;
-  endTime: string | null;
-  bookTitle: string | null;
-  progressTitle: string | null;
-  progressMemo: string | null;
-  nextPrep: string | null;
-  homeworkCount: number;
+  bookTitle?: string | null;
+  progressTitle?: string | null;
+  progressMemo?: string | null;
+  nextPrep?: string | null;
+  homeworkCount?: number;
 };
 
 type Notice = {
@@ -58,6 +55,16 @@ function mondayOfThisWeek() {
 
 function dateLabel(date: string) {
   return new Intl.DateTimeFormat("ko-KR", { month: "numeric", day: "numeric", weekday: "short" }).format(new Date(`${date}T00:00:00`));
+}
+
+function scheduleItemLabel(item: ScheduleItem) {
+  if (item.type === "class") return "수업";
+  if (item.type === "makeup_class") return "보강";
+  if (item.type === "cancelled_class") return "휴강";
+  if (item.type === "assignment_due") return "숙제 마감";
+  if (item.type === "test") return "시험";
+  if (item.type === "notice") return "공지";
+  return "기타";
 }
 
 export default function TeacherDashboardPage() {

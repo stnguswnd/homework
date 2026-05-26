@@ -12,6 +12,7 @@ import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Textarea } from "@/components/ui/Textarea";
+import { formatTimeRange } from "@/lib/calendarTypes";
 import { cn } from "@/lib/utils";
 
 type Tab = "overview" | "students" | "notices" | "homework" | "schedule" | "tests";
@@ -19,8 +20,7 @@ type StudentRow = { id: string; name: string; studentLoginId: string; status: st
 type AssignmentRow = { id: string; title: string; assignmentType: string; dueAt: string | null; targetCount: number; submittedCount: number; missingCount: number; needsReviewCount: number };
 type Notice = { id: string; title: string; content: string; imageUrl: string | null; status: string; createdAt: string };
 type CalendarEvent = { id: string; eventType: string; title: string; description?: string | null; eventDate: string; startTime?: string | null; endTime?: string | null; status: string };
-type ScheduleDay = { id: string; date: string; startTime?: string | null; endTime?: string | null; bookTitle?: string | null; progressTitle?: string | null };
-type TestRow = { id: string; title: string; subject: string; testDate: string; scope?: string | null; status: string; resultCount: number; passCount: number; nonpassCount: number };
+type TestRow = { id: string; title: string; subject: string; testDate: string; startTime?: string | null; endTime?: string | null; scope?: string | null; status: string; resultCount: number; passCount: number; nonpassCount: number };
 type TestResultRow = { studentId: string; studentName: string; score: number | null; maxScore: number; result: "PASS" | "NonPASS"; teacherMemo: string; takenAt?: string | null };
 type ClassItem = { name: string; description?: string | null; status?: "active" | "archived" };
 type DeletePreview = { deleted: boolean; archived: boolean; reason: "no_history" | "has_history" };
@@ -79,7 +79,6 @@ export default function ClassDetailPage() {
   const [classItem, setClassItem] = useState<ClassItem | null>(null);
   const [students, setStudents] = useState<StudentRow[]>([]);
   const [assignments, setAssignments] = useState<AssignmentRow[]>([]);
-  const [scheduleDays, setScheduleDays] = useState<ScheduleDay[]>([]);
   const [notices, setNotices] = useState<Notice[]>([]);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [tests, setTests] = useState<TestRow[]>([]);
@@ -91,11 +90,10 @@ export default function ClassDetailPage() {
   const [isDeletePending, startDeleteTransition] = useTransition();
 
   async function loadAll() {
-    const [classData, studentData, assignmentData, scheduleData, noticeData, eventData, testData] = await Promise.all([
+    const [classData, studentData, assignmentData, noticeData, eventData, testData] = await Promise.all([
       fetch(`/api/teacher/classes/${classId}`).then((response) => response.json()),
       fetch(`/api/teacher/classes/${classId}/students`).then((response) => response.json()),
       fetch(`/api/teacher/classes/${classId}/assignments`).then((response) => response.json()),
-      fetch(`/api/teacher/classes/${classId}/schedule`).then((response) => response.json()),
       fetch(`/api/teacher/classes/${classId}/notices`).then((response) => response.json()).catch(() => ({ notices: [] })),
       fetch(`/api/teacher/classes/${classId}/calendar-events`).then((response) => response.json()).catch(() => ({ events: [] })),
       fetch(`/api/teacher/tests?classId=${classId}`).then((response) => response.json()).catch(() => ({ tests: [] })),
@@ -103,7 +101,6 @@ export default function ClassDetailPage() {
     setClassItem(classData.class ?? null);
     setStudents(studentData.students ?? []);
     setAssignments(assignmentData.assignments ?? []);
-    setScheduleDays(scheduleData.scheduleDays ?? []);
     setNotices(noticeData.notices ?? []);
     setEvents(eventData.events ?? []);
     setTests(testData.tests ?? []);
@@ -205,7 +202,7 @@ export default function ClassDetailPage() {
               <h1 className="text-2xl font-extrabold">{classItem?.name ?? "반 상세"}</h1>
               <p className="mt-2 text-slate-600">{classItem?.description ?? "-"}</p>
               <p className="mt-3 text-sm font-semibold text-slate-500">
-                학생 {students.length}명 · 숙제 {assignments.length}개 · 예정 시험 {tests.filter((test) => test.status === "scheduled").length}개 · 공유 일정 {events.length + scheduleDays.length}개
+                학생 {students.length}명 · 숙제 {assignments.length}개 · 예정 시험 {tests.filter((test) => test.status === "scheduled").length}개 · 공유 일정 {events.length + tests.length + assignments.filter((assignment) => assignment.dueAt).length}개
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -242,7 +239,7 @@ export default function ClassDetailPage() {
         {activeTab === "students" && <StudentsTab students={students} />}
         {activeTab === "notices" && <NoticesTab classId={classId} notices={notices} onChanged={refresh} />}
         {activeTab === "homework" && <HomeworkTab classId={classId} assignments={assignments} />}
-        {activeTab === "schedule" && <ScheduleTab classId={classId} scheduleDays={scheduleDays} events={events} onChanged={refresh} />}
+        {activeTab === "schedule" && <ScheduleTab classId={classId} events={events} tests={tests} assignments={assignments} onChanged={refresh} />}
         {activeTab === "tests" && <TestsTab classId={classId} students={students} tests={tests} onChanged={refresh} />}
         {isEditOpen && classItem && (
           <ClassEditModal
@@ -351,7 +348,7 @@ function OverviewTab({ notices, assignments, events, tests }: { notices: Notice[
       <SummaryCard title="이번주 수업/일정" empty="등록된 일정이 없습니다." items={events.slice(0, 4).map((event) => ({ id: event.id, title: event.title, meta: `${formatDate(event.eventDate)} · ${eventLabel(event.eventType)}` }))} />
       <SummaryCard title="최근 반 공지사항" empty="이 반에 등록된 공지사항이 없습니다." items={notices.slice(0, 4).map((notice) => ({ id: notice.id, title: notice.title, meta: notice.status }))} />
       <SummaryCard title="숙제 현황" empty="등록된 숙제가 없습니다." items={assignments.slice(0, 4).map((assignment) => ({ id: assignment.id, title: assignment.title, meta: `제출 ${assignment.submittedCount}/${assignment.targetCount}명` }))} />
-      <SummaryCard title="예정된 테스트" empty="등록된 테스트가 없습니다." items={tests.slice(0, 4).map((test) => ({ id: test.id, title: test.title, meta: `${test.subject} · ${formatDate(test.testDate)}` }))} />
+      <SummaryCard title="예정된 테스트" empty="등록된 테스트가 없습니다." items={tests.slice(0, 4).map((test) => ({ id: test.id, title: test.title, meta: `${test.subject} · ${formatDate(test.testDate)} · ${formatTimeRange(test.startTime, test.endTime)}` }))} />
     </div>
   );
 }
@@ -515,13 +512,15 @@ function NoticeModal({ classId, notice, onClose, onSaved }: { classId: string; n
   );
 }
 
-function ScheduleTab({ classId, scheduleDays, events, onChanged }: { classId: string; scheduleDays: ScheduleDay[]; events: CalendarEvent[]; onChanged: (msg: string) => void }) {
+function ScheduleTab({ classId, events, tests, assignments, onChanged }: { classId: string; events: CalendarEvent[]; tests: TestRow[]; assignments: AssignmentRow[]; onChanged: (msg: string) => void }) {
   const [isOpen, setIsOpen] = useState(false);
-  const firstDate = events[0]?.eventDate ?? scheduleDays[0]?.date ?? "2026-05-25";
+  const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
+  const firstDate = events[0]?.eventDate ?? tests[0]?.testDate ?? assignments.find((assignment) => assignment.dueAt)?.dueAt ?? "2026-05-25";
   const [selectedDate, setSelectedDate] = useState(dateOnly(firstDate));
   const visibleEvents = events.filter((event) => event.status !== "hidden");
   const selectedEvents = visibleEvents.filter((event) => dateOnly(event.eventDate) === selectedDate);
-  const selectedScheduleDays = scheduleDays.filter((day) => dateOnly(day.date) === selectedDate);
+  const selectedTests = tests.filter((test) => test.status !== "hidden" && dateOnly(test.testDate) === selectedDate);
+  const selectedAssignments = assignments.filter((assignment) => dateOnly(assignment.dueAt) === selectedDate);
 
   async function remove(eventId: string) {
     await fetch(`/api/teacher/classes/${classId}/calendar-events/${eventId}`, { method: "DELETE" });
@@ -535,11 +534,11 @@ function ScheduleTab({ classId, scheduleDays, events, onChanged }: { classId: st
           <h2 className="font-bold">수업 일정</h2>
           <p className="mt-1 text-sm text-slate-500">이 캘린더는 반 단위로 공유되어 같은 반 학생 홈 화면에도 표시됩니다.</p>
         </div>
-        <Button onClick={() => setIsOpen(true)}>일정 추가</Button>
+        <Button onClick={() => { setEditingEvent(null); setIsOpen(true); }}>일정 추가</Button>
       </div>
 
       <div className="mt-4 grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-        <ClassCalendarGrid events={visibleEvents} scheduleDays={scheduleDays} selectedDate={selectedDate} onSelectDate={setSelectedDate} anchorDate={firstDate} />
+        <ClassCalendarGrid events={visibleEvents} tests={tests} assignments={assignments} selectedDate={selectedDate} onSelectDate={setSelectedDate} anchorDate={firstDate} />
         <div className="rounded-lg border border-line bg-slate-50 p-4">
           <h3 className="font-bold">{formatDate(selectedDate)} 일정</h3>
           <div className="mt-3 grid gap-3">
@@ -552,28 +551,38 @@ function ScheduleTab({ classId, scheduleDays, events, onChanged }: { classId: st
                     <p className="text-sm text-slate-500">{event.startTime ?? ""}{event.startTime || event.endTime ? " - " : ""}{event.endTime ?? ""}</p>
                     {event.description && <p className="mt-2 text-sm text-slate-600">{event.description}</p>}
                   </div>
-                  <Button variant="danger" onClick={() => remove(event.id)}>삭제</Button>
+                  <div className="flex gap-2">
+                    <Button variant="secondary" onClick={() => { setEditingEvent(event); setIsOpen(true); }}>수정</Button>
+                    <Button variant="danger" onClick={() => remove(event.id)}>삭제</Button>
+                  </div>
                 </div>
               </div>
             ))}
-            {selectedScheduleDays.map((day) => (
-              <div key={day.id} className="rounded-md border border-line bg-white p-3">
-                <Badge tone="blue">수업 기록</Badge>
-                <p className="mt-2 font-bold">{day.startTime ?? ""}{day.startTime || day.endTime ? " - " : ""}{day.endTime ?? ""}</p>
-                <p className="text-sm text-slate-500">{day.bookTitle ?? "-"} / {day.progressTitle ?? "-"}</p>
+            {selectedTests.map((test) => (
+              <div key={test.id} className="rounded-md border border-line bg-white p-3">
+                <Badge tone="yellow">시험</Badge>
+                <p className="mt-2 font-bold">{test.title}</p>
+                <p className="text-sm text-slate-500">{test.subject} · {formatTimeRange(test.startTime, test.endTime)} · {test.scope ?? "-"}</p>
               </div>
             ))}
-            {selectedEvents.length === 0 && selectedScheduleDays.length === 0 && <p className="rounded-md border border-dashed border-line bg-white p-4 text-center text-sm text-slate-500">선택한 날짜에 일정이 없습니다.</p>}
+            {selectedAssignments.map((assignment) => (
+              <div key={assignment.id} className="rounded-md border border-line bg-white p-3">
+                <Badge tone="blue">숙제 마감</Badge>
+                <p className="mt-2 font-bold">{assignment.title}</p>
+                <p className="text-sm text-slate-500">제출 {assignment.submittedCount}/{assignment.targetCount}명</p>
+              </div>
+            ))}
+            {selectedEvents.length === 0 && selectedTests.length === 0 && selectedAssignments.length === 0 && <p className="rounded-md border border-dashed border-line bg-white p-4 text-center text-sm text-slate-500">선택한 날짜에 일정이 없습니다.</p>}
           </div>
         </div>
       </div>
 
-      {isOpen && <ScheduleModal classId={classId} onClose={() => setIsOpen(false)} onSaved={() => { setIsOpen(false); onChanged("일정을 저장했습니다."); }} />}
+      {isOpen && <ScheduleModal classId={classId} event={editingEvent} onClose={() => setIsOpen(false)} onSaved={() => { setIsOpen(false); setEditingEvent(null); onChanged("일정을 저장했습니다."); }} />}
     </Card>
   );
 }
 
-function ClassCalendarGrid({ events, scheduleDays, selectedDate, onSelectDate, anchorDate }: { events: CalendarEvent[]; scheduleDays: ScheduleDay[]; selectedDate: string; onSelectDate: (date: string) => void; anchorDate: string }) {
+function ClassCalendarGrid({ events, tests, assignments, selectedDate, onSelectDate, anchorDate }: { events: CalendarEvent[]; tests: TestRow[]; assignments: AssignmentRow[]; selectedDate: string; onSelectDate: (date: string) => void; anchorDate: string }) {
   const days = buildMonthDays(anchorDate);
   const eventsByDate = useMemo(() => {
     const grouped = new Map<string, Array<{ type: string; id: string }>>();
@@ -581,12 +590,16 @@ function ClassCalendarGrid({ events, scheduleDays, selectedDate, onSelectDate, a
       const key = dateOnly(event.eventDate);
       grouped.set(key, [...(grouped.get(key) ?? []), { type: event.eventType, id: event.id }]);
     }
-    for (const day of scheduleDays) {
-      const key = dateOnly(day.date);
-      grouped.set(key, [...(grouped.get(key) ?? []), { type: "class", id: day.id }]);
+    for (const test of tests) {
+      const key = dateOnly(test.testDate);
+      grouped.set(key, [...(grouped.get(key) ?? []), { type: "test", id: test.id }]);
+    }
+    for (const assignment of assignments) {
+      const key = dateOnly(assignment.dueAt);
+      if (key) grouped.set(key, [...(grouped.get(key) ?? []), { type: "assignment_due", id: assignment.id }]);
     }
     return grouped;
-  }, [events, scheduleDays]);
+  }, [events, tests, assignments]);
 
   return (
     <div className="rounded-lg border border-line bg-white p-4">
@@ -614,7 +627,7 @@ function ClassCalendarGrid({ events, scheduleDays, selectedDate, onSelectDate, a
                   <span className="font-bold">{Number(date.slice(-2))}</span>
                   <div className="mt-1 flex flex-wrap gap-1">
                     {markers.slice(0, 4).map((marker) => (
-                      <span key={`${marker.type}-${marker.id}`} className={cn("h-2 w-2 rounded-full", marker.type === "cancelled" && "bg-red-500", marker.type === "test" && "bg-yellow-500", marker.type === "makeup" && "bg-green-500", marker.type === "class" && "bg-blue-500", marker.type === "etc" && "bg-slate-400")} />
+                      <span key={`${marker.type}-${marker.id}`} className={cn("h-2 w-2 rounded-full", marker.type === "cancelled" && "bg-red-500", marker.type === "test" && "bg-yellow-500", marker.type === "assignment_due" && "bg-violet-500", marker.type === "makeup" && "bg-green-500", marker.type === "class" && "bg-blue-500", marker.type === "etc" && "bg-slate-400")} />
                     ))}
                   </div>
                 </>
@@ -627,30 +640,38 @@ function ClassCalendarGrid({ events, scheduleDays, selectedDate, onSelectDate, a
   );
 }
 
-function ScheduleModal({ classId, onClose, onSaved }: { classId: string; onClose: () => void; onSaved: () => void }) {
-  const [eventType, setEventType] = useState("class");
-  const [title, setTitle] = useState("");
-  const [eventDate, setEventDate] = useState("2026-05-25");
-  const [startTime, setStartTime] = useState("");
-  const [endTime, setEndTime] = useState("");
-  const [description, setDescription] = useState("");
+function ScheduleModal({ classId, event, onClose, onSaved }: { classId: string; event: CalendarEvent | null; onClose: () => void; onSaved: () => void }) {
+  const [eventType, setEventType] = useState(event?.eventType ?? "class");
+  const [title, setTitle] = useState(event?.title ?? "");
+  const [eventDate, setEventDate] = useState(event?.eventDate ?? "2026-05-25");
+  const [startTime, setStartTime] = useState(event?.startTime ?? "");
+  const [endTime, setEndTime] = useState(event?.endTime ?? "");
+  const [description, setDescription] = useState(event?.description ?? "");
+  const [error, setError] = useState("");
   const [isPending, startTransition] = useTransition();
 
   function save() {
+    setError("");
     startTransition(async () => {
-      await fetch(`/api/teacher/classes/${classId}/calendar-events`, {
-        method: "POST",
+      const response = await fetch(event ? `/api/teacher/classes/${classId}/calendar-events/${event.id}` : `/api/teacher/classes/${classId}/calendar-events`, {
+        method: event ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ eventType, title, eventDate, startTime: startTime || null, endTime: endTime || null, description }),
       });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        setError(data?.error ?? "일정을 저장하지 못했습니다.");
+        return;
+      }
       onSaved();
     });
   }
 
   return (
-    <Modal title="일정 추가" onClose={onClose}>
+    <Modal title={event ? "일정 수정" : "일정 추가"} onClose={onClose}>
       <div className="grid gap-4">
-        <label className="grid gap-2 text-sm font-semibold">유형<Select value={eventType} onChange={(event) => setEventType(event.target.value)}><option value="class">정규수업</option><option value="cancelled">휴강</option><option value="makeup">보강</option><option value="test">시험</option><option value="etc">기타</option></Select></label>
+        {error && <p className="rounded-md bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{error}</p>}
+        <label className="grid gap-2 text-sm font-semibold">유형<Select value={eventType} onChange={(event) => setEventType(event.target.value)}><option value="class">정규수업</option><option value="cancelled">휴강</option><option value="makeup">보강</option><option value="notice">공지</option><option value="etc">기타</option></Select></label>
         <label className="grid gap-2 text-sm font-semibold">날짜<Input type="date" value={eventDate} onChange={(event) => setEventDate(event.target.value)} /></label>
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="grid gap-2 text-sm font-semibold">시작 시간<Input type="time" value={startTime} onChange={(event) => setStartTime(event.target.value)} /></label>
@@ -666,6 +687,7 @@ function ScheduleModal({ classId, onClose, onSaved }: { classId: string; onClose
 
 function TestsTab({ classId, students, tests, onChanged }: { classId: string; students: StudentRow[]; tests: TestRow[]; onChanged: (msg: string) => void }) {
   const [isTestOpen, setIsTestOpen] = useState(false);
+  const [editingTest, setEditingTest] = useState<TestRow | null>(null);
   const [resultTest, setResultTest] = useState<TestRow | null>(null);
 
   async function remove(testId: string) {
@@ -677,7 +699,7 @@ function TestsTab({ classId, students, tests, onChanged }: { classId: string; st
     <Card>
       <div className="flex items-center justify-between">
         <h2 className="font-bold">테스트 관리</h2>
-        <Button onClick={() => setIsTestOpen(true)}>테스트 추가</Button>
+        <Button onClick={() => { setEditingTest(null); setIsTestOpen(true); }}>테스트 추가</Button>
       </div>
       <div className="mt-3 grid gap-3">
         {tests.length ? (
@@ -687,7 +709,7 @@ function TestsTab({ classId, students, tests, onChanged }: { classId: string; st
                 <div>
                   <Badge tone="blue">{test.subject}</Badge>
                   <h3 className="mt-2 font-bold">{test.title}</h3>
-                  <p className="text-sm text-slate-500">{formatDate(test.testDate)} · 범위: {test.scope ?? "-"}</p>
+                <p className="text-sm text-slate-500">{formatDate(test.testDate)} · {formatTimeRange(test.startTime, test.endTime)} · 범위: {test.scope ?? "-"}</p>
                   <div className="mt-2 flex gap-2">
                     <Badge>결과 {test.resultCount}</Badge>
                     <Badge tone="green">PASS {test.passCount}</Badge>
@@ -696,6 +718,7 @@ function TestsTab({ classId, students, tests, onChanged }: { classId: string; st
                 </div>
                 <div className="flex gap-2">
                   <Button variant="secondary" onClick={() => setResultTest(test)}>결과 입력</Button>
+                  <Button variant="secondary" onClick={() => { setEditingTest(test); setIsTestOpen(true); }}>수정</Button>
                   <Button variant="danger" onClick={() => remove(test.id)}>삭제</Button>
                 </div>
               </div>
@@ -705,36 +728,50 @@ function TestsTab({ classId, students, tests, onChanged }: { classId: string; st
           <p className="rounded-md border border-dashed border-line p-4 text-center text-sm text-slate-500">등록된 테스트가 없습니다.</p>
         )}
       </div>
-      {isTestOpen && <TestModal classId={classId} onClose={() => setIsTestOpen(false)} onSaved={() => { setIsTestOpen(false); onChanged("테스트를 저장했습니다."); }} />}
+      {isTestOpen && <TestModal classId={classId} test={editingTest} onClose={() => setIsTestOpen(false)} onSaved={() => { setIsTestOpen(false); setEditingTest(null); onChanged("테스트를 저장했습니다."); }} />}
       {resultTest && <TestResultModal test={resultTest} students={students} onClose={() => setResultTest(null)} onSaved={() => { setResultTest(null); onChanged("테스트 결과를 저장했습니다."); }} />}
     </Card>
   );
 }
 
-function TestModal({ classId, onClose, onSaved }: { classId: string; onClose: () => void; onSaved: () => void }) {
-  const [title, setTitle] = useState("");
-  const [subject, setSubject] = useState("SR");
-  const [testDate, setTestDate] = useState("2026-05-27");
-  const [scope, setScope] = useState("");
+function TestModal({ classId, test, onClose, onSaved }: { classId: string; test: TestRow | null; onClose: () => void; onSaved: () => void }) {
+  const [title, setTitle] = useState(test?.title ?? "");
+  const [subject, setSubject] = useState(test?.subject ?? "SR");
+  const [testDate, setTestDate] = useState(test?.testDate ?? "2026-05-27");
+  const [startTime, setStartTime] = useState(test?.startTime ?? "");
+  const [endTime, setEndTime] = useState(test?.endTime ?? "");
+  const [scope, setScope] = useState(test?.scope ?? "");
+  const [error, setError] = useState("");
   const [isPending, startTransition] = useTransition();
 
   function save() {
+    setError("");
     startTransition(async () => {
-      await fetch("/api/teacher/tests", {
-        method: "POST",
+      const response = await fetch(test ? `/api/teacher/tests/${test.id}` : "/api/teacher/tests", {
+        method: test ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ classId, title, subject, testDate, scope }),
+        body: JSON.stringify({ classId, title, subject, testDate, startTime: startTime || null, endTime: endTime || null, scope }),
       });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        setError(data?.error ?? "테스트를 저장하지 못했습니다.");
+        return;
+      }
       onSaved();
     });
   }
 
   return (
-    <Modal title="테스트 추가" onClose={onClose}>
+    <Modal title={test ? "테스트 수정" : "테스트 추가"} onClose={onClose}>
       <div className="grid gap-4">
+        {error && <p className="rounded-md bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{error}</p>}
         <label className="grid gap-2 text-sm font-semibold">시험명<Input value={title} onChange={(event) => setTitle(event.target.value)} /></label>
         <label className="grid gap-2 text-sm font-semibold">과목<Input value={subject} onChange={(event) => setSubject(event.target.value)} /></label>
         <label className="grid gap-2 text-sm font-semibold">시험 날짜<Input type="date" value={testDate} onChange={(event) => setTestDate(event.target.value)} /></label>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="grid gap-2 text-sm font-semibold">시작 시간<Input type="time" value={startTime} onChange={(event) => setStartTime(event.target.value)} /></label>
+          <label className="grid gap-2 text-sm font-semibold">종료 시간<Input type="time" value={endTime} onChange={(event) => setEndTime(event.target.value)} /></label>
+        </div>
         <label className="grid gap-2 text-sm font-semibold">범위<Input value={scope} onChange={(event) => setScope(event.target.value)} /></label>
         <ModalActions onClose={onClose} onSave={save} isPending={isPending} />
       </div>

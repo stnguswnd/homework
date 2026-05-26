@@ -10,7 +10,6 @@ type Params = {
 };
 
 type ClassHistoryCounts = {
-  scheduleCount: number;
   eventCount: number;
   assignmentCount: number;
   targetCount: number;
@@ -20,7 +19,6 @@ type ClassHistoryCounts = {
 };
 
 const historyTables: Array<{ table: string; key: keyof ClassHistoryCounts }> = [
-  { table: "class_schedule_days", key: "scheduleCount" },
   { table: "class_calendar_events", key: "eventCount" },
   { table: "assignments", key: "assignmentCount" },
   { table: "assignment_targets", key: "targetCount" },
@@ -31,7 +29,6 @@ const historyTables: Array<{ table: string; key: keyof ClassHistoryCounts }> = [
 
 function emptyCounts(): ClassHistoryCounts {
   return {
-    scheduleCount: 0,
     eventCount: 0,
     assignmentCount: 0,
     targetCount: 0,

@@ -1,11 +1,12 @@
 import { randomUUID } from "crypto";
 import type { PoolClient } from "pg";
 
+import type { CalendarItem, CalendarItemType } from "@/lib/calendarTypes";
 import { query } from "@/lib/postgres";
 
 export type NoticeStatus = "draft" | "published" | "hidden" | "archived";
 export type NoticeTargetType = "all" | "class" | "student";
-export type CalendarEventType = "assignment" | "test" | "cancelled" | "makeup" | "class" | "notice" | "etc";
+export type CalendarEventType = "cancelled" | "makeup" | "class" | "notice" | "etc";
 export type TestStatus = "scheduled" | "completed" | "cancelled" | "hidden";
 export type TestResultStatus = "PASS" | "NonPASS";
 
@@ -17,7 +18,7 @@ export type NoticeInput = {
 };
 
 export type CalendarEventInput = {
-  eventType?: Exclude<CalendarEventType, "assignment">;
+  eventType?: CalendarEventType;
   title?: string;
   description?: string | null;
   eventDate?: string;
@@ -144,6 +145,7 @@ export async function createCalendarEvent(teacherId: string, classId: string, in
   const eventDate = input.eventDate;
   const eventType = input.eventType ?? "etc";
   if (!title || !eventDate) throw new Error("일정 제목과 날짜를 입력해주세요.");
+  if (String(eventType) === "test") throw new Error("시험 일정은 테스트 탭에서 생성해주세요.");
   const id = `event-${randomUUID()}`;
   await query(
     `
@@ -152,23 +154,6 @@ export async function createCalendarEvent(teacherId: string, classId: string, in
     `,
     [id, teacherId, classId, eventType, title, input.description || null, eventDate, input.startTime || null, input.endTime || null, input.status ?? "active"],
   );
-  if (eventType === "cancelled" || eventType === "makeup" || eventType === "class") {
-    await query(
-      `
-        insert into class_schedule_days (id, class_id, date, has_class, start_time, end_time, progress_title, progress_memo)
-        values ($1, $2, $3, $4, $5, $6, $7, $8)
-        on conflict (class_id, date)
-        do update set
-          has_class = excluded.has_class,
-          start_time = coalesce(excluded.start_time, class_schedule_days.start_time),
-          end_time = coalesce(excluded.end_time, class_schedule_days.end_time),
-          progress_title = coalesce(excluded.progress_title, class_schedule_days.progress_title),
-          progress_memo = coalesce(excluded.progress_memo, class_schedule_days.progress_memo),
-          updated_at = now()
-      `,
-      [`schedule-${randomUUID()}`, classId, eventDate, eventType !== "cancelled", input.startTime || null, input.endTime || null, title, input.description || null],
-    );
-  }
   return id;
 }
 
@@ -180,6 +165,7 @@ export async function getClassCalendarEvents(teacherId: string, classId: string,
       join classes c on c.id = e.class_id and c.teacher_id = e.teacher_id
       where e.teacher_id = $1
         and e.class_id = $2
+        and e.event_type <> 'test'
         and ($3::date is null or e.event_date >= $3::date)
         and ($4::date is null or e.event_date <= $4::date)
       order by e.event_date asc, e.start_time asc nulls last
@@ -193,11 +179,138 @@ export async function getClassCalendarEvents(teacherId: string, classId: string,
     eventType: row.event_type,
     title: row.title,
     description: row.description,
-    eventDate: row.event_date instanceof Date ? row.event_date.toISOString().slice(0, 10) : row.event_date,
+    eventDate: toDateString(row.event_date),
     startTime: row.start_time,
     endTime: row.end_time,
     status: row.status,
   }));
+}
+
+function calendarTypeForEvent(eventType: string): CalendarItemType {
+  if (eventType === "class") return "class";
+  if (eventType === "makeup") return "makeup_class";
+  if (eventType === "cancelled") return "cancelled_class";
+  if (eventType === "notice") return "notice";
+  return "etc";
+}
+
+function toDateString(value: Date | string | null | undefined) {
+  if (!value) return "";
+  if (value instanceof Date) {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, "0");
+    const day = String(value.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+  return String(value).slice(0, 10);
+}
+
+export async function getTeacherCalendarItems(teacherId: string, start: string, end: string, classId?: string): Promise<CalendarItem[]> {
+  const [eventResult, testResult, assignmentResult] = await Promise.all([
+    query(
+      `
+        select e.*, c.name as class_name
+        from class_calendar_events e
+        join classes c on c.id = e.class_id and c.teacher_id = e.teacher_id and c.status = 'active'
+        where e.teacher_id = $1
+          and e.status = 'active'
+          and e.event_type <> 'test'
+          and e.event_date between $2::date and $3::date
+          and ($4::text is null or e.class_id = $4)
+        order by e.event_date asc, e.start_time asc nulls last, c.name asc
+      `,
+      [teacherId, start, end, classId ?? null],
+    ),
+    query(
+      `
+        select t.*, c.name as class_name
+        from tests t
+        left join classes c on c.id = t.class_id and c.teacher_id = t.teacher_id and c.status = 'active'
+        where t.teacher_id = $1
+          and t.status <> 'hidden'
+          and t.test_date between $2::date and $3::date
+          and ($4::text is null or t.class_id = $4)
+          and (t.class_id is null or c.id is not null)
+        order by t.test_date asc, t.start_time asc nulls last
+      `,
+      [teacherId, start, end, classId ?? null],
+    ),
+    query(
+      `
+        select
+          a.id as assignment_id,
+          a.title,
+          a.assignment_subject,
+          coalesce(at.due_at, a.due_at)::date as due_date,
+          coalesce(at.class_id, a.class_id) as class_id,
+          c.name as class_name,
+          count(at.id)::int as target_count,
+          count(at.id) filter (where at.status in ('submitted', 'late'))::int as submitted_count
+        from assignment_targets at
+        join assignments a on a.id = at.assignment_id and a.teacher_id = $1
+        left join classes c on c.id = coalesce(at.class_id, a.class_id) and c.teacher_id = a.teacher_id and c.status = 'active'
+        where at.status <> 'cancelled'
+          and coalesce(at.due_at, a.due_at)::date between $2::date and $3::date
+          and ($4::text is null or coalesce(at.class_id, a.class_id) = $4)
+          and (coalesce(at.class_id, a.class_id) is null or c.id is not null)
+        group by a.id, a.title, a.assignment_subject, coalesce(at.due_at, a.due_at)::date, coalesce(at.class_id, a.class_id), c.name
+        order by coalesce(at.due_at, a.due_at)::date asc, c.name asc nulls last, a.title asc
+      `,
+      [teacherId, start, end, classId ?? null],
+    ),
+  ]);
+
+  return [
+    ...eventResult.rows.map((row) => ({
+      id: String(row.id),
+      source: "class_calendar_event" as const,
+      type: calendarTypeForEvent(String(row.event_type)),
+      title: String(row.title ?? ""),
+      date: toDateString(row.event_date),
+      classId: row.class_id ? String(row.class_id) : null,
+      className: row.class_name ? String(row.class_name) : null,
+      startTime: row.start_time ? String(row.start_time) : null,
+      endTime: row.end_time ? String(row.end_time) : null,
+      description: row.description ? String(row.description) : null,
+      subject: null,
+      status: row.status ? String(row.status) : null,
+    })),
+    ...testResult.rows.map((row) => ({
+      id: `test-${row.id}`,
+      source: "test" as const,
+      type: "test" as const,
+      title: String(row.title ?? ""),
+      date: toDateString(row.test_date),
+      classId: row.class_id ? String(row.class_id) : null,
+      className: row.class_name ? String(row.class_name) : null,
+      startTime: row.start_time ? String(row.start_time) : null,
+      endTime: row.end_time ? String(row.end_time) : null,
+      description: row.scope || row.description ? String(row.scope ?? row.description) : null,
+      subject: row.subject ? String(row.subject) : null,
+      status: row.status ? String(row.status) : null,
+      testId: row.id ? String(row.id) : null,
+    })),
+    ...assignmentResult.rows.map((row) => {
+      const submittedCount = Number(row.submitted_count ?? 0);
+      const targetCount = Number(row.target_count ?? 0);
+      return {
+        id: `assignment-due-${row.assignment_id}-${row.class_id ?? "none"}-${toDateString(row.due_date)}`,
+        source: "assignment_due" as const,
+        type: "assignment_due" as const,
+        title: String(row.title ?? ""),
+        date: toDateString(row.due_date),
+        classId: row.class_id ? String(row.class_id) : null,
+        className: row.class_name ? String(row.class_name) : null,
+        startTime: null,
+        endTime: null,
+        description: null,
+        subject: row.assignment_subject ? String(row.assignment_subject) : null,
+        status: `${submittedCount}/${targetCount} submitted`,
+        assignmentId: row.assignment_id ? String(row.assignment_id) : null,
+        targetCount,
+      };
+    }),
+  ].sort((a, b) => a.date.localeCompare(b.date) || (a.startTime ?? "").localeCompare(b.startTime ?? "") || a.title.localeCompare(b.title));
 }
 
 export async function updateCalendarEvent(teacherId: string, classId: string, eventId: string, input: CalendarEventInput) {
@@ -225,22 +338,13 @@ export async function deleteCalendarEvent(teacherId: string, classId: string, ev
 
 export async function createTest(teacherId: string, input: TestInput) {
   if (!input.classId || !input.title?.trim() || !input.subject?.trim() || !input.testDate) throw new Error("시험명, 과목, 날짜를 입력해주세요.");
-  const eventId = await createCalendarEvent(teacherId, input.classId, {
-    eventType: "test",
-    title: input.title,
-    description: input.scope || input.description || null,
-    eventDate: input.testDate,
-    startTime: input.startTime ?? null,
-    endTime: input.endTime ?? null,
-    status: input.status === "hidden" || input.status === "cancelled" ? "hidden" : "active",
-  });
   const testId = `test-${randomUUID()}`;
   await query(
     `
-      insert into tests (id, teacher_id, class_id, calendar_event_id, title, subject, test_date, start_time, end_time, scope, description, status)
-      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      insert into tests (id, teacher_id, class_id, title, subject, test_date, start_time, end_time, scope, description, status)
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
     `,
-    [testId, teacherId, input.classId, eventId, input.title.trim(), input.subject.trim(), input.testDate, input.startTime || null, input.endTime || null, input.scope || null, input.description || null, input.status ?? "scheduled"],
+    [testId, teacherId, input.classId, input.title.trim(), input.subject.trim(), input.testDate, input.startTime || null, input.endTime || null, input.scope || null, input.description || null, input.status ?? "scheduled"],
   );
   return testId;
 }
@@ -269,7 +373,7 @@ export async function getTeacherTests(teacherId: string, classId?: string) {
     className: row.class_name,
     title: row.title,
     subject: row.subject,
-    testDate: row.test_date instanceof Date ? row.test_date.toISOString().slice(0, 10) : row.test_date,
+    testDate: toDateString(row.test_date),
     startTime: row.start_time,
     endTime: row.end_time,
     scope: row.scope,
@@ -282,8 +386,6 @@ export async function getTeacherTests(teacherId: string, classId?: string) {
 }
 
 export async function updateTest(teacherId: string, testId: string, input: TestInput) {
-  const result = await query<{ calendar_event_id: string | null; class_id: string | null }>("select calendar_event_id, class_id from tests where id = $1 and teacher_id = $2", [testId, teacherId]);
-  const existing = result.rows[0];
   await query(
     `
       update tests
@@ -293,25 +395,10 @@ export async function updateTest(teacherId: string, testId: string, input: TestI
     `,
     [testId, teacherId, input.title?.trim() || null, input.subject?.trim() || null, input.testDate ?? null, input.startTime ?? null, input.endTime ?? null, input.scope ?? null, input.description ?? null, input.status ?? null],
   );
-  if (existing?.calendar_event_id && existing.class_id) {
-    await updateCalendarEvent(teacherId, existing.class_id, existing.calendar_event_id, {
-      eventType: "test",
-      title: input.title,
-      description: input.scope ?? input.description ?? null,
-      eventDate: input.testDate,
-      startTime: input.startTime ?? null,
-      endTime: input.endTime ?? null,
-      status: input.status === "hidden" || input.status === "cancelled" ? "hidden" : "active",
-    });
-  }
 }
 
 export async function deleteTest(teacherId: string, testId: string) {
-  const result = await query<{ calendar_event_id: string | null; class_id: string | null }>("select calendar_event_id, class_id from tests where id = $1 and teacher_id = $2", [testId, teacherId]);
   await query("update tests set status = 'hidden', updated_at = now() where id = $1 and teacher_id = $2", [testId, teacherId]);
-  if (result.rows[0]?.calendar_event_id && result.rows[0].class_id) {
-    await deleteCalendarEvent(teacherId, result.rows[0].class_id, result.rows[0].calendar_event_id);
-  }
 }
 
 export async function getTestResults(teacherId: string, testId: string) {
@@ -334,7 +421,7 @@ export async function getTestResults(teacherId: string, testId: string) {
     maxScore: row.max_score === null ? 100 : Number(row.max_score),
     result: row.result ?? "PASS",
     teacherMemo: row.teacher_memo ?? "",
-    takenAt: row.taken_at instanceof Date ? row.taken_at.toISOString().slice(0, 10) : row.taken_at,
+    takenAt: toDateString(row.taken_at),
   }));
 }
 
@@ -392,14 +479,12 @@ export async function getStudentCalendarEvents(studentId: string, teacherId: str
         coalesce(at.due_at, a.due_at)::date as date,
         a.title,
         a.assignment_subject,
-        coalesce(at.status, sub.status, 'assigned') as target_status,
-        sub.submitted_at,
+        coalesce(at.status, 'assigned') as target_status,
         coalesce(at.class_id, a.class_id) as class_id,
         c.name as class_name
       from assignment_targets at
       join assignments a on a.id = at.assignment_id
       left join classes c on c.id = coalesce(at.class_id, a.class_id) and c.teacher_id = a.teacher_id
-      left join submissions sub on sub.assignment_id = at.assignment_id and sub.student_id = at.student_id
       where at.student_id = $1
         and a.teacher_id = $2
         and (
@@ -420,16 +505,45 @@ export async function getStudentCalendarEvents(studentId: string, teacherId: str
         e.event_date,
         e.event_type,
         e.title,
+        e.description,
         e.class_id,
-        c.name as class_name
+        c.name as class_name,
+        e.start_time,
+        e.end_time
       from class_calendar_events e
       join classes c on c.id = e.class_id and c.status = 'active'
       join class_memberships cm on cm.class_id = e.class_id
       where cm.student_id = $1
         and e.teacher_id = $2
         and e.status = 'active'
+        and e.event_type <> 'test'
         and e.event_date between $3::date and $4::date
       order by e.event_date asc
+    `,
+    [studentId, teacherId, start, end],
+  );
+
+  const tests = await query(
+    `
+      select distinct
+        t.id,
+        t.test_date,
+        t.title,
+        t.subject,
+        t.scope,
+        t.class_id,
+        c.name as class_name,
+        t.start_time,
+        t.end_time,
+        t.status
+      from tests t
+      join class_memberships cm on cm.class_id = t.class_id
+      join classes c on c.id = t.class_id and c.teacher_id = t.teacher_id and c.status = 'active'
+      where cm.student_id = $1
+        and t.teacher_id = $2
+        and t.status <> 'hidden'
+        and t.test_date between $3::date and $4::date
+      order by t.test_date asc
     `,
     [studentId, teacherId, start, end],
   );
@@ -437,21 +551,40 @@ export async function getStudentCalendarEvents(studentId: string, teacherId: str
   return [
     ...homework.rows.map((row) => ({
       id: `assignment-${row.assignment_id}`,
-      date: row.date instanceof Date ? row.date.toISOString().slice(0, 10) : String(row.date),
-      type: "assignment",
+      source: "assignment_due",
+      date: toDateString(row.date),
+      type: "assignment_due",
       title: row.title,
       classId: row.class_id,
       className: row.class_name,
       subject: row.assignment_subject,
-      status: row.submitted_at || row.target_status === "submitted" ? "submitted" : row.target_status,
+      status: row.target_status,
     })),
     ...events.rows.map((row) => ({
       id: row.id,
-      date: row.event_date instanceof Date ? row.event_date.toISOString().slice(0, 10) : String(row.event_date),
-      type: row.event_type,
+      source: "class_calendar_event",
+      date: toDateString(row.event_date),
+      type: calendarTypeForEvent(String(row.event_type)),
       title: row.title,
       classId: row.class_id,
       className: row.class_name,
+      startTime: row.start_time,
+      endTime: row.end_time,
+      description: row.description,
+    })),
+    ...tests.rows.map((row) => ({
+      id: `test-${row.id}`,
+      source: "test",
+      date: toDateString(row.test_date),
+      type: "test",
+      title: row.title,
+      classId: row.class_id,
+      className: row.class_name,
+      subject: row.subject,
+      startTime: row.start_time,
+      endTime: row.end_time,
+      description: row.scope,
+      status: row.status,
     })),
   ].sort((a, b) => a.date.localeCompare(b.date));
 }
@@ -476,7 +609,9 @@ export async function getStudentUpcomingTests(studentId: string, teacherId: stri
     id: row.id,
     title: row.title,
     subject: row.subject,
-    date: row.test_date instanceof Date ? row.test_date.toISOString().slice(0, 10) : row.test_date,
+    date: toDateString(row.test_date),
+    startTime: row.start_time,
+    endTime: row.end_time,
     scope: row.scope,
   }));
 }
@@ -484,7 +619,7 @@ export async function getStudentUpcomingTests(studentId: string, teacherId: stri
 export async function getStudentTestResults(studentId: string, teacherId: string) {
   const result = await query(
     `
-      select tr.*, t.title, t.subject, t.test_date
+      select tr.*, t.title, t.subject, t.test_date, t.start_time, t.end_time
       from test_results tr
       join tests t on t.id = tr.test_id
       join classes c on c.id = tr.class_id and c.teacher_id = tr.teacher_id and c.status = 'active'
@@ -498,7 +633,9 @@ export async function getStudentTestResults(studentId: string, teacherId: string
     id: row.id,
     title: row.title,
     subject: row.subject,
-    date: row.taken_at instanceof Date ? row.taken_at.toISOString().slice(0, 10) : row.taken_at ? String(row.taken_at) : row.test_date instanceof Date ? row.test_date.toISOString().slice(0, 10) : String(row.test_date),
+    date: toDateString(row.taken_at || row.test_date),
+    startTime: row.start_time,
+    endTime: row.end_time,
     score: row.score === null ? null : Number(row.score),
     result: row.result,
     teacherMemo: row.teacher_memo,

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { studentAssignmentRepository } from "@/features/assignments/repositories/studentAssignmentRepository";
 import { getStudentCalendarEvents, getStudentTestResults, getStudentUpcomingTests, getStudentVisibleNotices } from "@/lib/dashboardData";
+import { formatTimeRange } from "@/lib/calendarTypes";
 import { assignmentTypeLabel as formatAssignmentTypeLabel } from "@/lib/assignmentTypes";
 import { query } from "@/lib/postgres";
 import { getStudentSession } from "@/server/auth/studentSession";
@@ -36,6 +37,8 @@ type UpcomingTest = {
   title: string;
   subject: string;
   date: string;
+  startTime?: string | null;
+  endTime?: string | null;
   scope: string;
 };
 
@@ -44,6 +47,8 @@ type TestResult = {
   title: string;
   subject: string;
   date: string;
+  startTime?: string | null;
+  endTime?: string | null;
   score: number | null;
   result: "PASS" | "NonPASS";
   teacherMemo: string | null;
@@ -252,7 +257,7 @@ function UpcomingTestCard({ test }: { test?: UpcomingTest }) {
         <div className="mt-4 rounded-lg bg-blue-50 p-4">
           <Badge tone="blue">{test.subject}</Badge>
           <h4 className="mt-3 text-lg font-extrabold">{test.title}</h4>
-          <p className="mt-1 text-sm font-semibold text-slate-700">{formatDate(test.date)}</p>
+          <p className="mt-1 text-sm font-semibold text-slate-700">{formatDate(test.date)} · {formatTimeRange(test.startTime, test.endTime)}</p>
           <p className="mt-2 text-sm text-slate-600">범위: {test.scope || "-"}</p>
         </div>
       )}
@@ -274,7 +279,7 @@ function TestHistoryList({ results }: { results: TestResult[] }) {
                 <div>
                   <h4 className="font-bold">{result.title}</h4>
                   <p className="mt-1 text-sm text-slate-500">
-                    {result.subject} · {formatDate(result.date)}
+                    {result.subject} · {formatDate(result.date)} · {formatTimeRange(result.startTime, result.endTime)}
                   </p>
                 </div>
                 <div className="text-right">
