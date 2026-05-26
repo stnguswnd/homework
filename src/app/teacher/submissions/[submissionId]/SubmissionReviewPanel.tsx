@@ -104,7 +104,7 @@ export function SubmissionReviewPanel({ detail }: { detail: SubmissionDetail }) 
             disabled={isPending}
             variant={status === "reviewed" ? "secondary" : "primary"}
           >
-            {pendingStatus === "reviewed" ? "완료 저장 중..." : status === "reviewed" ? "완료 처리됨" : "완료"}
+            {pendingStatus === "reviewed" ? "승인 저장 중..." : status === "reviewed" ? "승인 처리됨" : "승인"}
           </Button>
         </div>
       </Card>
