@@ -9,7 +9,6 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
-import { ASSIGNMENT_SUBJECTS } from "@/lib/assignmentTypes";
 
 type HomeworkItem = {
   assignmentId: string;
@@ -37,7 +36,6 @@ type ClassOverview = {
 };
 
 const ALL_SUBJECTS = "전체";
-const subjectOrder = [ALL_SUBJECTS, ...ASSIGNMENT_SUBJECTS];
 
 export function ClassOverviewPage({ status }: { status: "active" | "archived" }) {
   const isArchived = status === "archived";
@@ -182,12 +180,15 @@ function ClassStatusCard({
 }) {
   const subjects = useMemo(
     () => {
-      const visibleSubjects = new Set(
-        classItem.students.flatMap((student) => [...student.reviewItems, ...student.missingItems].map((item) => item.subject)),
-      );
-      return subjectOrder.filter((subject) => subject === ALL_SUBJECTS || visibleSubjects.has(subject));
+      const visibleSubjects = new Set(classItem.subjects);
+      for (const student of classItem.students) {
+        for (const item of [...student.reviewItems, ...student.missingItems]) {
+          visibleSubjects.add(item.subject);
+        }
+      }
+      return [ALL_SUBJECTS, ...Array.from(visibleSubjects).sort()];
     },
-    [classItem.students],
+    [classItem.subjects, classItem.students],
   );
 
   const students = classItem.students.map((student) => ({

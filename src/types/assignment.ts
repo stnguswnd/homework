@@ -1,4 +1,4 @@
-import type { AssignmentItemType, AssignmentSubject, AssignmentType, WritingMode, WritingUnit } from "@/lib/assignmentTypes";
+import type { AssignmentItemType, AssignmentType, WritingMode, WritingUnit } from "@/lib/assignmentTypes";
 
 export type Assignment = {
   id: string;
@@ -7,7 +7,7 @@ export type Assignment = {
   title: string;
   description?: string;
   assignmentType: AssignmentType;
-  assignmentSubject?: AssignmentSubject;
+  assignmentSubject?: string;
   imageUrl?: string;
   imageStoragePath?: string;
   dueAt?: string;

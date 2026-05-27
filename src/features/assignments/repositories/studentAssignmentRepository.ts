@@ -3,7 +3,7 @@ import "server-only";
 import { query } from "@/lib/postgres";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 import { storageBuckets } from "@/lib/supabase/storage";
-import { normalizeAssignmentItemType, normalizeAssignmentSubject, normalizeAssignmentType, normalizeWritingMode, normalizeWritingUnit } from "@/lib/assignmentTypes";
+import { normalizeAssignmentItemType, normalizeAssignmentType, normalizeWritingMode, normalizeWritingUnit } from "@/lib/assignmentTypes";
 import type { Assignment } from "@/types/assignment";
 
 type ItemRow = {
@@ -45,7 +45,7 @@ type AssignmentRow = {
   title: string;
   description: string | null;
   assignment_type: Assignment["assignmentType"];
-  assignment_subject: string | null;
+  subject_name: string | null;
   image_url: string | null;
   image_storage_path: string | null;
   due_at: Date | null;
@@ -125,7 +125,7 @@ async function mapAssignmentWithSignedUrls(row: AssignmentRow): Promise<Assignme
     title: row.title,
     description: row.description ?? undefined,
     assignmentType: normalizeAssignmentType(row.assignment_type),
-    assignmentSubject: normalizeAssignmentSubject(row.assignment_subject),
+    assignmentSubject: row.subject_name ?? undefined,
     imageUrl: ((await signedUrl(storageBuckets.images, row.image_storage_path)) || row.image_url) ?? undefined,
     imageStoragePath: row.image_storage_path ?? undefined,
     dueAt: row.due_at?.toISOString(),
@@ -165,7 +165,7 @@ export const studentAssignmentRepository = {
     const result = await query<AssignmentRow>(
       `
         select
-          a.id, a.teacher_id, a.class_id, a.title, a.description, a.assignment_type, a.assignment_subject, a.image_url, a.image_storage_path,
+          a.id, a.teacher_id, a.class_id, a.title, a.description, a.assignment_type, cs.name as subject_name, a.image_url, a.image_storage_path,
           coalesce(at.due_at, a.due_at) as due_at,
           a.status,
           coalesce(sub.status, at.status) as target_status,
@@ -256,6 +256,7 @@ export const studentAssignmentRepository = {
           ) as submission_vocabulary_items
         from assignment_targets at
         join assignments a on a.id = at.assignment_id and a.teacher_id = $2
+        left join class_subjects cs on cs.id = at.class_subject_id and cs.teacher_id = a.teacher_id
         left join assignment_items ai on ai.assignment_id = a.id
         left join submissions sub on sub.assignment_id = at.assignment_id and sub.student_id = at.student_id
         left join submission_items si on si.submission_id = sub.id and si.assignment_item_id = ai.id
@@ -272,7 +273,7 @@ export const studentAssignmentRepository = {
                 and c.status = 'active'
             )
           )
-        group by a.id, at.due_at, at.status, at.submitted_at, sub.id, sub.status, sub.submitted_at, sub.reviewed_at, sub.teacher_comment, tf.comment
+        group by a.id, cs.name, at.due_at, at.status, at.submitted_at, sub.id, sub.status, sub.submitted_at, sub.reviewed_at, sub.teacher_comment, tf.comment
         order by coalesce(at.due_at, a.due_at, a.created_at) asc
       `,
       [studentId, teacherId],

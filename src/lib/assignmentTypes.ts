@@ -16,9 +16,7 @@ export type WritingMode = "picture_description" | "topic_diary";
 
 export type WritingUnit = "paragraphs" | "sentences";
 
-export const ASSIGNMENT_SUBJECTS = ["Phonics", "AL", "AR", "SL", "RBJ", "SG", "ST", "SR", "JT", "Boost", "BRT", "BLT"] as const;
-
-export type AssignmentSubject = (typeof ASSIGNMENT_SUBJECTS)[number];
+export type AssignmentSubject = string;
 
 const SUPPORTED_ASSIGNMENT_TYPES = ["listening_recording", "listening", "writing", "vocabulary_example", "vocabulary_recording"] as const;
 
@@ -58,13 +56,11 @@ export function assignmentSubjectLabel(value: string | null | undefined) {
 }
 
 export function normalizeAssignmentSubject(value: string | null | undefined): AssignmentSubject {
-  const trimmed = String(value ?? "").trim();
-  if (ASSIGNMENT_SUBJECTS.includes(trimmed as AssignmentSubject)) return trimmed as AssignmentSubject;
-  return "Phonics";
+  return String(value ?? "").trim();
 }
 
 export function assignmentSubjectForType() {
-  return "Phonics" as AssignmentSubject;
+  return "";
 }
 
 export function itemTypeForAssignmentType(value: string | null | undefined): AssignmentItemType {

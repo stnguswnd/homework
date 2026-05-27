@@ -13,6 +13,7 @@ type ClassRow = {
   status: "active" | "archived";
   student_count: number;
   students: Array<{ id: string; name: string }>;
+  subjects: Array<{ id: string; name: string; description: string | null }>;
   created_at: Date;
 };
 
@@ -34,6 +35,7 @@ function mapClass(row: ClassRow, teacherId: string) {
     status: row.status,
     studentCount: row.student_count,
     students: row.students,
+    subjects: row.subjects ?? [],
     createdAt: row.created_at.toISOString(),
   };
 }
@@ -54,7 +56,20 @@ export async function GET() {
             distinct jsonb_build_object('id', s.id, 'name', s.name)
           ) filter (where s.id is not null),
           '[]'::json
-        ) as students
+        ) as students,
+        coalesce(
+          (
+            select json_agg(
+              json_build_object('id', cs.id, 'name', cs.name, 'description', cs.description)
+              order by cs.created_at asc, cs.name asc
+            )
+            from class_subjects cs
+            where cs.class_id = c.id
+              and cs.teacher_id = c.teacher_id
+              and cs.status = 'active'
+          ),
+          '[]'::json
+        ) as subjects
       from classes c
       left join class_memberships cm on cm.class_id = c.id
       left join students s on s.id = cm.student_id and s.teacher_id = c.teacher_id
@@ -94,7 +109,7 @@ export async function POST(request: Request) {
       `
         insert into classes (id, teacher_id, name, description, status)
         values ($1, $2, $3, $4, $5)
-        returning id, name, description, status, created_at, 0::int as student_count, '[]'::json as students
+        returning id, name, description, status, created_at, 0::int as student_count, '[]'::json as students, '[]'::json as subjects
       `,
       [
         `class-${slugify(name)}-${randomUUID().slice(0, 6)}`,

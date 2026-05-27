@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "check:encoding": "node scripts/check-encoding.mjs",
     "start": "next start",
     "check:db": "node scripts/check-db-url.mjs",
     "create:teacher": "node scripts/create-teacher.mjs",

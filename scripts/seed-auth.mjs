@@ -30,7 +30,7 @@ loadEnvFile(".env.local");
 loadEnvFile(".env");
 
 const databaseUrl = process.env.DATABASE_URL;
-const shouldSeedDemoData = process.env.NODE_ENV !== "production" || process.env.ALLOW_DEMO_SEED === "true";
+const shouldSeedDemoData = false;
 
 if (!databaseUrl) {
   throw new Error("Missing DATABASE_URL.");
@@ -71,7 +71,7 @@ const users = [
 ];
 
 const classes = [
-  ["class-a", "teacher-1", "월수 Basic Speaking", "Elementary speaking class", "active"],
+  ["class-a", "teacher-1", "화수 Basic Speaking", "Elementary speaking class", "active"],
   ["class-b", "teacher-1", "화목 Reading Plus", "Reading and shadowing class", "active"],
   ["class-c", "teacher-1", "토요 Interview", "Presentation and interview class", "active"],
   ["reading-a", "teacher-1", "Elementary Reading A", "Elementary Reading A class", "active"],
@@ -306,188 +306,7 @@ try {
     `,
   );
 
-  if (shouldSeedDemoData) {
-    console.warn("Seeding demo assignments, targets, submissions, and recording metadata. Existing rows with the same ids may be updated.");
-
-    await pool.query(
-      `
-        insert into assignments (id, teacher_id, class_id, title, description, assignment_type, assignment_subject, due_at, status)
-        values
-          ('assignment-1', 'teacher-1', 'class-a', 'Discovery Unit 1 Speaking Homework', 'Listen and record the passage.', 'listening_recording', 'Phonics', '2026-05-25T14:59:00.000Z', 'published'),
-          ('assignment-2', 'teacher-1', 'class-b', 'Reading Plus Shadowing 03', 'Practice natural sentence shadowing.', 'listening_recording', 'Phonics', '2026-05-28T14:59:00.000Z', 'published'),
-          ('assignment-3', 'teacher-1', 'reading-a', 'Elementary Reading A Listening Practice', 'Listen to the passage and complete the homework.', 'listening', 'Phonics', '2026-05-30T14:59:00.000Z', 'published'),
-          ('assignment-4', 'teacher-1', 'class-a', '4 Paragraph Weekend Writing', 'Write about your weekend and get AI feedback.', 'writing', 'Phonics', '2026-05-31T14:59:00.000Z', 'published'),
-          ('assignment-5', 'teacher-1', 'class-a', 'Unit 3 Vocabulary Sentence Writing', 'Write a sentence using a given vocabulary.', 'vocabulary_example', 'SL', '2026-06-01T14:59:00.000Z', 'published'),
-          ('assignment-6', 'teacher-1', 'class-a', 'Unit 3 Vocabulary Reading', 'Read out loud and record.', 'vocabulary_recording', 'SL', '2026-06-02T14:59:00.000Z', 'published'),
-          ('hw_1', 'teacher-1', null, 'Discovery Unit 1 Speaking Homework', 'Listen and record the passage.', 'listening_recording', 'Phonics', null, 'draft'),
-          ('hw_2', 'teacher-1', null, 'Reading Plus Shadowing 03', 'Practice natural sentence shadowing.', 'listening_recording', 'Phonics', null, 'draft'),
-          ('hw_3', 'teacher-1', null, 'Listening Completion Practice', 'Listen to the MP3 and mark the homework complete.', 'listening', 'Phonics', null, 'draft'),
-          ('hw_4', 'teacher-1', null, '4 Paragraph Writing Practice', 'Write, receive AI feedback, revise, and submit.', 'writing', 'Phonics', null, 'draft'),
-          ('hw_5', 'teacher-1', null, 'Unit 3 Vocabulary Sentence Writing', 'Write a sentence using a given vocabulary.', 'vocabulary_example', 'SL', null, 'draft'),
-          ('hw_6', 'teacher-1', null, 'Unit 3 Vocabulary Reading', 'Read out loud and record.', 'vocabulary_recording', 'SL', null, 'draft')
-        on conflict (id) do update set
-          title = excluded.title,
-          description = excluded.description,
-          assignment_type = excluded.assignment_type,
-          assignment_subject = excluded.assignment_subject,
-          due_at = excluded.due_at,
-          status = excluded.status,
-          updated_at = now()
-      `,
-    );
-
-    await pool.query(
-      `
-        insert into assignment_items (
-          id, assignment_id, item_type, title, passage_text, audio_url,
-          audio_file_name, order_index, min_recording_sec, max_recording_sec,
-          writing_mode, writing_unit, writing_unit_count, prompt_text, writing_instructions, writing_hint, writing_example
-        )
-        values
-          ('item-1', 'assignment-1', 'listening_recording', 'A Day at the Museum', 'I went to the museum with my family. We saw old paintings, shiny stones, and a big dinosaur.', '/mock-audio/native-sample.m4a', 'native-sample.m4a', 1, 3, 120, null, null, 4, null, null, null, null),
-          ('item-2', 'assignment-2', 'listening_recording', 'My Busy Morning', 'Every morning, I pack my bag, eat breakfast, and walk to school.', '/mock-audio/native-sample.m4a', 'native-sample.m4a', 1, 3, 90, null, null, 4, null, null, null, null),
-          ('item-3', 'assignment-3', 'listening', 'Reading A Audio Check', 'Listen carefully and complete the homework after the audio ends.', '/mock-audio/native-sample.m4a', 'native-sample.m4a', 1, 0, 0, null, null, 4, null, null, null, null),
-          ('item-4', 'assignment-4', 'writing_prompt', 'Weekend Writing', null, null, null, 1, 0, 0, 'topic_diary', 'paragraphs', 4, 'Write about your weekend.', 'Use past tense and write clearly.', 'Think about where you went, what you did, and how you felt.', 'I went to the park with my family. We played soccer and ate lunch together. I felt happy because the weather was sunny.'),
-          ('item-5', 'assignment-5', 'vocabulary_example', 'Vocabulary Sentence Writing', null, null, null, 1, 0, 0, null, null, 4, 'Write a sentence using a given vocabulary.', 'Use one complete English sentence for each word.', 'Think about the word meaning before writing.', 'I read a book in the library.'),
-          ('item-6', 'assignment-6', 'vocabulary_recording', 'Vocabulary Reading', null, null, null, 1, 10, 120, null, null, 4, 'Read out loud and record.', 'Read every word in order and speak clearly.', null, null),
-          ('hw_1-item-1', 'hw_1', 'listening_recording', 'A Day at the Museum', 'I went to the museum with my family. We saw old paintings, shiny stones, and a big dinosaur.', null, null, 1, 3, 120, null, null, 4, null, null, null, null),
-          ('hw_2-item-1', 'hw_2', 'listening_recording', 'My Busy Morning', 'Every morning, I pack my bag, eat breakfast, and walk to school.', null, null, 1, 3, 90, null, null, 4, null, null, null, null),
-          ('hw_3-item-1', 'hw_3', 'listening', 'Listening Completion', 'Listen to the MP3 and complete the homework.', null, null, 1, 0, 0, null, null, 4, null, null, null, null),
-          ('hw_4-item-1', 'hw_4', 'writing_prompt', 'Writing Prompt', null, null, null, 1, 0, 0, 'topic_diary', 'paragraphs', 4, 'Write about your favorite food.', 'Write simple and complete sentences.', 'Use because to explain your reason.', 'My favorite food is pizza because it is cheesy and delicious.'),
-          ('hw_5-item-1', 'hw_5', 'vocabulary_example', 'Vocabulary Sentence Writing', null, null, null, 1, 0, 0, null, null, 4, 'Write a sentence using a given vocabulary.', 'Use one complete English sentence for each word.', 'Think about the word meaning before writing.', 'I read a book in the library.'),
-          ('hw_6-item-1', 'hw_6', 'vocabulary_recording', 'Vocabulary Reading', null, null, null, 1, 10, 120, null, null, 4, 'Read out loud and record.', 'Read every word in order and speak clearly.', null, null)
-        on conflict (id) do update set
-          item_type = excluded.item_type,
-          title = excluded.title,
-          passage_text = excluded.passage_text,
-          audio_url = excluded.audio_url,
-          audio_file_name = excluded.audio_file_name,
-          min_recording_sec = excluded.min_recording_sec,
-          max_recording_sec = excluded.max_recording_sec,
-          writing_mode = excluded.writing_mode,
-          writing_unit = excluded.writing_unit,
-          writing_unit_count = excluded.writing_unit_count,
-          prompt_text = excluded.prompt_text,
-          writing_instructions = excluded.writing_instructions,
-          writing_hint = excluded.writing_hint,
-          writing_example = excluded.writing_example,
-          updated_at = now()
-      `,
-    );
-
-    await pool.query(
-      `
-        insert into assignment_vocabulary_items (id, assignment_id, word, meaning, order_index)
-        values
-          ('vocab-5-1', 'assignment-5', 'apple', '사과', 0),
-          ('vocab-5-2', 'assignment-5', 'library', '도서관', 1),
-          ('vocab-5-3', 'assignment-5', 'happy', '행복한', 2),
-          ('vocab-5-4', 'assignment-5', 'mountain', '산', 3),
-          ('vocab-5-5', 'assignment-5', 'teacher', '선생님', 4),
-          ('vocab-5-6', 'assignment-5', 'picture', '사진', 5),
-          ('vocab-6-1', 'assignment-6', 'apple', '사과', 0),
-          ('vocab-6-2', 'assignment-6', 'library', '도서관', 1),
-          ('vocab-6-3', 'assignment-6', 'happy', '행복한', 2),
-          ('vocab-6-4', 'assignment-6', 'mountain', '산', 3),
-          ('vocab-6-5', 'assignment-6', 'teacher', '선생님', 4),
-          ('vocab-6-6', 'assignment-6', 'picture', '사진', 5),
-          ('vocab-6-7', 'assignment-6', 'hungry', '배고픈', 6),
-          ('vocab-6-8', 'assignment-6', 'quickly', '빠르게', 7),
-          ('vocab-hw-5-1', 'hw_5', 'apple', '사과', 0),
-          ('vocab-hw-5-2', 'hw_5', 'library', '도서관', 1),
-          ('vocab-hw-5-3', 'hw_5', 'happy', '행복한', 2),
-          ('vocab-hw-6-1', 'hw_6', 'apple', '사과', 0),
-          ('vocab-hw-6-2', 'hw_6', 'library', '도서관', 1),
-          ('vocab-hw-6-3', 'hw_6', 'happy', '행복한', 2)
-        on conflict (id) do update set
-          word = excluded.word,
-          meaning = excluded.meaning,
-          order_index = excluded.order_index,
-          updated_at = now()
-      `,
-    );
-
-    await pool.query(
-      `
-        insert into assignment_targets (id, assignment_id, class_id, student_id, status, due_at, submitted_at, reviewed)
-        values
-          ('target-1', 'assignment-1', 'class-a', 'student-1', 'submitted', '2026-05-25T14:59:00.000Z', '2026-05-22T10:10:00.000Z', false),
-          ('target-2', 'assignment-1', 'class-a', 'student-2', 'submitted', '2026-05-25T14:59:00.000Z', '2026-05-22T11:25:00.000Z', true),
-          ('target-3', 'assignment-1', 'class-a', 'student-3', 'assigned', '2026-05-25T14:59:00.000Z', null, false),
-          ('target-6', 'assignment-1', 'class-a', 'student-6', 'assigned', '2026-05-25T14:59:00.000Z', null, false),
-          ('target-7', 'assignment-1', 'class-a', 'student-7', 'assigned', '2026-05-25T14:59:00.000Z', null, false),
-          ('target-8', 'assignment-1', 'class-a', 'student-8', 'assigned', '2026-05-25T14:59:00.000Z', null, false),
-          ('target-9', 'assignment-1', 'class-a', 'student-9', 'assigned', '2026-05-25T14:59:00.000Z', null, false),
-          ('target-4', 'assignment-2', 'class-b', 'student-3', 'assigned', '2026-05-28T14:59:00.000Z', null, false),
-          ('target-5', 'assignment-2', 'class-b', 'student-5', 'assigned', '2026-05-28T14:59:00.000Z', null, false),
-          ('target-10', 'assignment-2', 'class-b', 'student-10', 'assigned', '2026-05-28T14:59:00.000Z', null, false),
-          ('target-11', 'assignment-2', 'class-b', 'student-11', 'assigned', '2026-05-28T14:59:00.000Z', null, false),
-          ('target-12', 'assignment-2', 'class-b', 'student-12', 'assigned', '2026-05-28T14:59:00.000Z', null, false),
-          ('target-13', 'assignment-3', 'reading-a', 'student-13', 'assigned', '2026-05-30T14:59:00.000Z', null, false),
-          ('target-14', 'assignment-3', 'reading-a', 'student-14', 'assigned', '2026-05-30T14:59:00.000Z', null, false),
-          ('target-15', 'assignment-3', 'reading-a', 'student-15', 'assigned', '2026-05-30T14:59:00.000Z', null, false),
-          ('target-16', 'assignment-3', 'reading-a', 'student-16', 'assigned', '2026-05-30T14:59:00.000Z', null, false),
-          ('target-17', 'assignment-3', 'reading-a', 'student-17', 'assigned', '2026-05-30T14:59:00.000Z', null, false),
-          ('target-18', 'assignment-3', 'reading-a', 'student-18', 'assigned', '2026-05-30T14:59:00.000Z', null, false),
-          ('target-19', 'assignment-3', 'reading-a', 'student-19', 'assigned', '2026-05-30T14:59:00.000Z', null, false),
-          ('target-20', 'assignment-3', 'reading-a', 'student-20', 'assigned', '2026-05-30T14:59:00.000Z', null, false),
-          ('target-21', 'assignment-3', 'reading-a', 'student-21', 'assigned', '2026-05-30T14:59:00.000Z', null, false),
-          ('target-22', 'assignment-3', 'reading-a', 'student-22', 'assigned', '2026-05-30T14:59:00.000Z', null, false),
-          ('target-23', 'assignment-4', 'class-a', 'student-1', 'assigned', '2026-05-31T14:59:00.000Z', null, false),
-          ('target-24', 'assignment-4', 'class-a', 'student-2', 'assigned', '2026-05-31T14:59:00.000Z', null, false),
-          ('target-25', 'assignment-4', 'class-a', 'student-3', 'assigned', '2026-05-31T14:59:00.000Z', null, false),
-          ('target-26', 'assignment-5', 'class-a', 'student-1', 'assigned', '2026-06-01T14:59:00.000Z', null, false),
-          ('target-27', 'assignment-5', 'class-a', 'student-2', 'assigned', '2026-06-01T14:59:00.000Z', null, false),
-          ('target-28', 'assignment-5', 'class-a', 'student-3', 'assigned', '2026-06-01T14:59:00.000Z', null, false),
-          ('target-29', 'assignment-6', 'class-a', 'student-1', 'assigned', '2026-06-02T14:59:00.000Z', null, false),
-          ('target-30', 'assignment-6', 'class-a', 'student-2', 'assigned', '2026-06-02T14:59:00.000Z', null, false),
-          ('target-31', 'assignment-6', 'class-a', 'student-3', 'assigned', '2026-06-02T14:59:00.000Z', null, false)
-        on conflict (assignment_id, student_id) do update set
-          class_id = excluded.class_id,
-          status = excluded.status,
-          due_at = excluded.due_at,
-          submitted_at = excluded.submitted_at,
-          reviewed = excluded.reviewed,
-          cancelled_at = null,
-          cancelled_by = null,
-          updated_at = now()
-      `,
-    );
-
-    await pool.query(
-      `
-        insert into submissions (id, assignment_id, student_id, assignment_target_id, status, submitted_at, teacher_comment, reviewed_at)
-        values
-          ('submission-1', 'assignment-1', 'student-1', 'target-1', 'submitted', '2026-05-22T10:10:00.000Z', null, null),
-          ('submission-2', 'assignment-1', 'student-2', 'target-2', 'reviewed', '2026-05-22T11:25:00.000Z', 'Good pronunciation. Try reading the last sentence more slowly.', '2026-05-23T01:00:00.000Z')
-        on conflict (assignment_id, student_id) do update set
-          status = excluded.status,
-          submitted_at = excluded.submitted_at,
-          teacher_comment = excluded.teacher_comment,
-          reviewed_at = excluded.reviewed_at,
-          updated_at = now()
-      `,
-    );
-
-    await pool.query(
-      `
-        insert into submission_items (
-          id, submission_id, assignment_item_id, recording_url, recording_file_name,
-          recording_mime_type, recording_duration_sec, file_size_bytes
-        )
-        values
-          ('subitem-1', 'submission-1', 'item-1', '/mock-audio/native-sample.m4a', 'jiwoo-unit1.m4a', 'audio/mp4', 34, 390000),
-          ('subitem-2', 'submission-2', 'item-1', '/mock-audio/native-sample.m4a', 'seojun-unit1.m4a', 'audio/mp4', 41, 420000)
-        on conflict (submission_id, assignment_item_id) do update set
-          recording_url = excluded.recording_url,
-          recording_file_name = excluded.recording_file_name,
-          recording_mime_type = excluded.recording_mime_type,
-          recording_duration_sec = excluded.recording_duration_sec,
-          file_size_bytes = excluded.file_size_bytes,
-          updated_at = now()
-      `,
-    );
-  }
+  console.log("Demo assignment seed skipped: assignments now require class_subjects.");
 
   console.log("Schema applied and seed data inserted.");
   console.log("Seeded auth users:");

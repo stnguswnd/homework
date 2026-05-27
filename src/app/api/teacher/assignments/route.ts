@@ -6,7 +6,7 @@ import { postgresPool, query } from "@/lib/postgres";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 import { storageBuckets } from "@/lib/supabase/storage";
 import { requireTeacherSession } from "@/server/teacher/session";
-import { assignmentSubjectForType, isSupportedAssignmentType, itemTypeForAssignmentType, normalizeAssignmentSubject, normalizeAssignmentType } from "@/lib/assignmentTypes";
+import { isSupportedAssignmentType, itemTypeForAssignmentType, normalizeAssignmentType } from "@/lib/assignmentTypes";
 
 export const runtime = "nodejs";
 
@@ -18,7 +18,6 @@ type AssignmentRow = {
   title: string;
   description: string | null;
   assignment_type: string;
-  assignment_subject: string;
   image_url: string | null;
   image_storage_path: string | null;
   image_file_name: string | null;
@@ -51,6 +50,7 @@ type AssignmentRow = {
 
 type AssignmentTargetInput = {
   classId: string;
+  classSubjectId?: string;
   dueDate: string;
   dueTime: string;
   visibility: "draft" | "published";
@@ -72,12 +72,14 @@ type AssignmentListRow = {
   title: string;
   description: string | null;
   assignment_type: string;
-  assignment_subject: string;
   status: string;
+  subject_names: string[] | null;
   class_names: string[] | null;
   class_summaries: Array<{
     classId: string;
     className: string;
+    subjectId: string | null;
+    subjectName: string | null;
     dueAt: string | null;
     targetCount: number;
     submittedCount: number;
@@ -114,7 +116,6 @@ async function mapAssignment(row: AssignmentRow) {
     title: row.title,
     description: row.description ?? "",
     type: normalizeAssignmentType(row.assignment_type),
-    subject: normalizeAssignmentSubject(row.assignment_subject),
     status: row.status,
     imageUrl: (await signedUrl(storageBuckets.images, row.image_storage_path)) || row.image_url || "",
     imageStoragePath: row.image_storage_path ?? undefined,
@@ -156,7 +157,6 @@ async function getAssignmentRow(id: string, teacherId: string) {
         a.title,
         a.description,
         a.assignment_type,
-        a.assignment_subject,
         a.image_url,
         a.image_storage_path,
         a.image_file_name,
@@ -218,6 +218,8 @@ export async function GET(request: Request) {
           select
             at.assignment_id,
             at.class_id,
+            at.class_subject_id,
+            csu.name as subject_name,
             coalesce(c.name, '미지정 반') as class_name,
             count(distinct at.student_id)::int as target_count,
             count(distinct at.student_id) filter (where at.status in ('submitted', 'late'))::int as submitted_count,
@@ -230,24 +232,27 @@ export async function GET(request: Request) {
           from assignment_targets at
           join assignments a on a.id = at.assignment_id
           left join classes c on c.id = at.class_id and c.teacher_id = a.teacher_id
+          left join class_subjects csu on csu.id = at.class_subject_id and csu.teacher_id = a.teacher_id
           left join students s on s.id = at.student_id and s.teacher_id = a.teacher_id
           where a.teacher_id = $1
             and at.status <> 'cancelled'
-          group by at.assignment_id, at.class_id, c.name
+          group by at.assignment_id, at.class_id, c.name, at.class_subject_id, csu.name
         )
         select
           a.id,
           a.title,
           a.description,
           a.assignment_type,
-          a.assignment_subject,
           a.status,
+          coalesce(array_remove(array_agg(distinct cs.subject_name), null), array[]::text[]) as subject_names,
           coalesce(array_remove(array_agg(distinct cs.class_name), null), array[]::text[]) as class_names,
           coalesce(
             jsonb_agg(
               jsonb_build_object(
                 'classId', cs.class_id,
                 'className', cs.class_name,
+                'subjectId', cs.class_subject_id,
+                'subjectName', cs.subject_name,
                 'dueAt', cs.due_at,
                 'targetCount', cs.target_count,
                 'submittedCount', cs.submitted_count,
@@ -276,7 +281,8 @@ export async function GET(request: Request) {
         title: row.title,
         description: row.description ?? "",
         assignmentType: normalizeAssignmentType(row.assignment_type),
-        assignmentSubject: normalizeAssignmentSubject(row.assignment_subject),
+        assignmentSubject: (row.subject_names ?? []).join(", "),
+        assignmentSubjects: row.subject_names ?? [],
         status: row.status,
         classNames: row.class_names ?? [],
         classSummaries: row.class_summaries ?? [],
@@ -303,7 +309,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "지원하지 않는 숙제 유형입니다." }, { status: 400 });
   }
   const type = rawType;
-  const subject = normalizeAssignmentSubject(String(formData.get("subject") ?? assignmentSubjectForType()).trim());
   const description = String(formData.get("description") ?? "").trim();
   const passageTitle = String(formData.get("passageTitle") ?? "").trim();
   const rawPassageText = String(formData.get("passageText") ?? "").trim();
@@ -438,22 +443,37 @@ export async function POST(request: Request) {
         await client.query("rollback");
         return NextResponse.json({ error: "일부 학생 배정은 학생을 최소 1명 선택해야 합니다." }, { status: 400 });
       }
+      const subjectResult = await client.query<{ id: string }>(
+        `
+          select id
+          from class_subjects
+          where id = $1
+            and class_id = $2
+            and teacher_id = $3
+            and status = 'active'
+          limit 1
+        `,
+        [targetAssignment.classSubjectId ?? "", targetAssignment.classId, teacherId],
+      );
+      if (!subjectResult.rows[0]) {
+        await client.query("rollback");
+        return NextResponse.json({ error: "선택한 반 과목을 찾을 수 없습니다." }, { status: 400 });
+      }
     }
 
     await client.query(
       `
         insert into assignments (
-          id, teacher_id, class_id, title, description, assignment_type, assignment_subject,
+          id, teacher_id, class_id, title, description, assignment_type,
           image_url, image_storage_path, image_file_name, due_at, status
         )
-        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         on conflict (id)
         do update set
           class_id = excluded.class_id,
           title = excluded.title,
           description = excluded.description,
           assignment_type = excluded.assignment_type,
-          assignment_subject = excluded.assignment_subject,
           image_url = coalesce(excluded.image_url, assignments.image_url),
           image_storage_path = coalesce(excluded.image_storage_path, assignments.image_storage_path),
           image_file_name = coalesce(excluded.image_file_name, assignments.image_file_name),
@@ -461,7 +481,7 @@ export async function POST(request: Request) {
           status = excluded.status,
           updated_at = now()
       `,
-      [id, teacherId, assignmentClassId, title, description || null, type, subject, imageUrl, imageStoragePath, imageFileName, assignmentDueAt, assignmentStatus],
+      [id, teacherId, assignmentClassId, title, description || null, type, imageUrl, imageStoragePath, imageFileName, assignmentDueAt, assignmentStatus],
     );
 
     await client.query(
@@ -538,11 +558,12 @@ export async function POST(request: Request) {
       for (const student of students) {
         await client.query(
           `
-            insert into assignment_targets (id, assignment_id, class_id, student_id, status, due_at)
-            values ($1, $2, $3, $4, 'assigned', $5)
+            insert into assignment_targets (id, assignment_id, class_id, class_subject_id, student_id, status, due_at)
+            values ($1, $2, $3, $4, $5, 'assigned', $6)
             on conflict (assignment_id, student_id)
             do update set
               class_id = excluded.class_id,
+              class_subject_id = excluded.class_subject_id,
               due_at = excluded.due_at,
               status = case
                 when assignment_targets.status in ('submitted', 'late') then assignment_targets.status
@@ -552,7 +573,7 @@ export async function POST(request: Request) {
               cancelled_by = null,
               updated_at = now()
           `,
-          [`target-${randomUUID()}`, id, targetAssignment.classId, student.id, dueAt],
+          [`target-${randomUUID()}`, id, targetAssignment.classId, targetAssignment.classSubjectId, student.id, dueAt],
         );
         assignedCount += 1;
       }
@@ -682,7 +703,7 @@ function parseTargetAssignments(value: FormDataEntryValue | null): AssignmentTar
   try {
     const parsed = JSON.parse(value) as AssignmentTargetInput[];
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter((item) => item.classId && item.dueDate);
+    return parsed.filter((item) => item.classId && item.classSubjectId && item.dueDate);
   } catch {
     return [];
   }

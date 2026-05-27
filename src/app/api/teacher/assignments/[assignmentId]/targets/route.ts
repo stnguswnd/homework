@@ -2,7 +2,7 @@ import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 
 import { query } from "@/lib/postgres";
-import { assignmentSubjectLabel, assignmentTypeLabel, normalizeAssignmentType } from "@/lib/assignmentTypes";
+import { assignmentTypeLabel, normalizeAssignmentType } from "@/lib/assignmentTypes";
 import { requireTeacherSession } from "@/server/teacher/session";
 
 export const runtime = "nodejs";
@@ -11,7 +11,6 @@ type TargetRow = {
   assignment_id: string;
   assignment_title: string;
   assignment_type: string;
-  assignment_subject: string | null;
   assignment_status: string;
   default_due_at: Date | null;
   target_id: string;
@@ -19,6 +18,8 @@ type TargetRow = {
   target_due_at: Date | null;
   class_id: string | null;
   class_name: string | null;
+  class_subject_id: string | null;
+  class_subject_name: string | null;
   student_id: string;
   student_name: string;
   submitted_at: Date | null;
@@ -40,13 +41,14 @@ export async function GET(_request: Request, { params }: { params: Promise<{ ass
         a.id as assignment_id,
         a.title as assignment_title,
         a.assignment_type,
-        a.assignment_subject,
         a.status as assignment_status,
         a.due_at as default_due_at,
         at.id as target_id,
         at.status as target_status,
         at.due_at as target_due_at,
         at.class_id,
+        at.class_subject_id,
+        cs.name as class_subject_name,
         coalesce(c.name, '미지정 반') as class_name,
         s.id as student_id,
         s.name as student_name,
@@ -56,6 +58,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ ass
       left join assignment_targets at on at.assignment_id = a.id
       left join students s on s.id = at.student_id and s.teacher_id = a.teacher_id
       left join classes c on c.id = at.class_id and c.teacher_id = a.teacher_id
+      left join class_subjects cs on cs.id = at.class_subject_id and cs.teacher_id = a.teacher_id
       left join submissions sub on sub.assignment_id = a.id and sub.student_id = at.student_id
       where a.id = $1
         and a.teacher_id = $2
@@ -72,6 +75,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ ass
   const groups = new Map<string, {
     classId: string;
     className: string;
+    subjectId: string | null;
+    subjectName: string | null;
     students: Array<{
       studentId: string;
       studentName: string;
@@ -89,6 +94,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ ass
     const group = groups.get(classId) ?? {
       classId,
       className: row.class_name ?? "미지정 반",
+      subjectId: row.class_subject_id,
+      subjectName: row.class_subject_name,
       students: [],
     };
     const submitted = Boolean(row.submitted_at || (row.submission_status && row.submission_status !== "not_submitted") || ["submitted", "late"].includes(row.target_status));
@@ -117,7 +124,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ ass
     assignment: {
       id: first.assignment_id,
       title: first.assignment_title,
-      subject: first.assignment_subject || assignmentSubjectLabel(normalizedType),
+      subject: grouped.map((group) => group.subjectName).filter(Boolean).join(", "),
       type: normalizedType,
       typeLabel: assignmentTypeLabel(normalizedType),
       status: first.assignment_status,
@@ -136,7 +143,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ ass
 export async function POST(request: Request, { params }: { params: Promise<{ assignmentId: string }> }) {
   const { teacherId } = await requireTeacherSession();
   const { assignmentId } = await params;
-  const body = await request.json().catch(() => null) as { studentIds?: string[]; classId?: string; dueAt?: string | null } | null;
+  const body = await request.json().catch(() => null) as { studentIds?: string[]; classId?: string; classSubjectId?: string; dueAt?: string | null } | null;
   const studentIds = Array.from(new Set((body?.studentIds ?? []).filter(Boolean)));
 
   if (studentIds.length === 0) {
@@ -155,6 +162,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ ass
     const classResult = await query("select id from classes where id = $1 and teacher_id = $2 limit 1", [body.classId, teacherId]);
     if (!classResult.rows[0]) {
       return NextResponse.json({ error: "반을 찾을 수 없습니다." }, { status: 400 });
+    }
+    const subjectResult = await query(
+      "select id from class_subjects where id = $1 and class_id = $2 and teacher_id = $3 and status = 'active' limit 1",
+      [body.classSubjectId ?? "", body.classId, teacherId],
+    );
+    if (!subjectResult.rows[0]) {
+      return NextResponse.json({ error: "선택한 반 과목을 찾을 수 없습니다." }, { status: 400 });
     }
   }
 
@@ -178,11 +192,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ ass
   for (const student of students.rows) {
     await query(
       `
-        insert into assignment_targets (id, assignment_id, class_id, student_id, status, due_at)
-        values ($1, $2, $3, $4, 'assigned', $5)
+        insert into assignment_targets (id, assignment_id, class_id, class_subject_id, student_id, status, due_at)
+        values ($1, $2, $3, $4, $5, 'assigned', $6)
         on conflict (assignment_id, student_id)
         do update set
           class_id = excluded.class_id,
+          class_subject_id = excluded.class_subject_id,
           due_at = excluded.due_at,
           status = case
             when assignment_targets.status in ('submitted', 'late') then assignment_targets.status
@@ -192,7 +207,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ ass
           cancelled_by = null,
           updated_at = now()
       `,
-      [`target-${randomUUID()}`, assignmentId, body?.classId ?? null, student.id, dueAt],
+      [`target-${randomUUID()}`, assignmentId, body?.classId ?? null, body?.classSubjectId ?? null, student.id, dueAt],
     );
   }
 

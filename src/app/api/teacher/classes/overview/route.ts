@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 
 import { query } from "@/lib/postgres";
-import { normalizeAssignmentSubject } from "@/lib/assignmentTypes";
 import { requireTeacherSession } from "@/server/teacher/session";
 
 export const runtime = "nodejs";
@@ -14,11 +13,16 @@ type Row = {
   student_name: string | null;
   assignment_id: string | null;
   assignment_title: string | null;
-  assignment_subject: string | null;
+  subject_name: string | null;
   target_status: string | null;
   target_reviewed: boolean | null;
   submission_id: string | null;
   submission_status: string | null;
+};
+
+type SubjectRow = {
+  class_id: string;
+  subject_name: string;
 };
 
 type HomeworkItem = {
@@ -62,7 +66,7 @@ export async function GET(request: Request) {
         s.name as student_name,
         a.id as assignment_id,
         a.title as assignment_title,
-        a.assignment_subject,
+        cs.name as subject_name,
         at.status as target_status,
         at.reviewed as target_reviewed,
         sub.id as submission_id,
@@ -72,6 +76,7 @@ export async function GET(request: Request) {
       left join students s on s.id = cm.student_id and s.status = 'active'
       left join assignment_targets at on at.student_id = s.id and at.class_id = c.id
       left join assignments a on a.id = at.assignment_id and a.teacher_id = c.teacher_id
+      left join class_subjects cs on cs.id = at.class_subject_id and cs.teacher_id = c.teacher_id
       left join lateral (
         select sub.id, sub.status
         from submissions sub
@@ -81,6 +86,20 @@ export async function GET(request: Request) {
       ) sub on true
       where c.teacher_id = $1 and c.status = $2
       order by c.created_at asc, s.name asc, a.updated_at desc nulls last
+    `,
+    [teacherId, status],
+  );
+  const subjectResult = await query<SubjectRow>(
+    `
+      select
+        c.id as class_id,
+        cs.name as subject_name
+      from classes c
+      join class_subjects cs on cs.class_id = c.id and cs.teacher_id = c.teacher_id
+      where c.teacher_id = $1
+        and c.status = $2
+        and cs.status = 'active'
+      order by c.created_at asc, cs.created_at asc, cs.name asc
     `,
     [teacherId, status],
   );
@@ -130,7 +149,7 @@ export async function GET(request: Request) {
 
     if (!row.assignment_id || !row.assignment_title) continue;
 
-    const subject = normalizeAssignmentSubject(row.assignment_subject);
+    const subject = row.subject_name ?? "과목 없음";
     if (!classItem.subjects.includes(subject)) classItem.subjects.push(subject);
 
     const targetKey = `${row.class_id}:${row.student_id}:${row.assignment_id}`;
@@ -167,6 +186,13 @@ export async function GET(request: Request) {
           student.reviewItems.push(item);
         }
       }
+    }
+  }
+
+  for (const row of subjectResult.rows) {
+    const classItem = classes.get(row.class_id);
+    if (classItem && !classItem.subjects.includes(row.subject_name)) {
+      classItem.subjects.push(row.subject_name);
     }
   }
 

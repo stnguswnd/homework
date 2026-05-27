@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 type AssignmentClassSummary = {
   classId: string;
   className: string;
+  subjectName?: string | null;
   dueAt: string | null;
   targetCount: number;
   submittedCount: number;
@@ -27,6 +28,7 @@ type AssignmentRow = {
   description: string;
   assignmentType: string;
   assignmentSubject: string;
+  assignmentSubjects?: string[];
   status: "published" | "draft" | "closed" | "archived" | string;
   classNames: string[];
   classSummaries: AssignmentClassSummary[];
@@ -43,10 +45,12 @@ type AssignmentClass = {
   status?: "active" | "archived";
   studentCount: number;
   students: Array<{ id: string; name: string }>;
+  subjects: Array<{ id: string; name: string; description?: string | null }>;
 };
 
 type TargetSelection = {
   classId: string;
+  classSubjectId: string;
   dueDate: string;
   dueTime: string;
   visibility: "published" | "draft";
@@ -54,21 +58,6 @@ type TargetSelection = {
   studentIds: string[];
   studentSearch: string;
 };
-
-function statusTone(status: AssignmentRow["status"]) {
-  if (status === "published") return "green";
-  if (status === "draft") return "gray";
-  if (status === "closed") return "yellow";
-  return "gray";
-}
-
-function statusLabel(status: string) {
-  if (status === "published") return "게시됨";
-  if (status === "draft") return "비공개";
-  if (status === "closed") return "종료";
-  if (status === "archived") return "보관됨";
-  return status;
-}
 
 function typeLabel(type: string) {
   return formatAssignmentTypeLabel(type);
@@ -101,7 +90,6 @@ export default function AssignmentsPage() {
   const [query, setQuery] = useState("");
   const [subjectFilter, setSubjectFilter] = useState("all");
   const [classFilter, setClassFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
   const [sort, setSort] = useState("latest");
   const [rows, setRows] = useState<AssignmentRow[]>([]);
   const [classes, setClasses] = useState<AssignmentClass[]>([]);
@@ -133,7 +121,7 @@ export default function AssignmentsPage() {
   }, []);
 
   const subjects = useMemo(() => {
-    return Array.from(new Set(rows.map((row) => row.assignmentSubject).filter(Boolean))).sort();
+    return Array.from(new Set(rows.flatMap((row) => row.assignmentSubjects ?? []).filter(Boolean))).sort();
   }, [rows]);
 
   const classFilterOptions = useMemo(() => {
@@ -149,13 +137,12 @@ export default function AssignmentsPage() {
     const keyword = query.trim().toLowerCase();
     const filtered = rows.filter((row) => {
       const matchesQuery = !keyword || row.title.toLowerCase().includes(keyword) || row.description.toLowerCase().includes(keyword);
-      const matchesSubject = subjectFilter === "all" || row.assignmentSubject === subjectFilter;
+      const matchesSubject = subjectFilter === "all" || (row.assignmentSubjects ?? []).includes(subjectFilter);
       const matchesClass = classFilter === "all" || row.classSummaries.some((summary) => summary.classId === classFilter);
-      const matchesStatus = statusFilter === "all" || row.status === statusFilter;
-      return matchesQuery && matchesSubject && matchesClass && matchesStatus;
+      return matchesQuery && matchesSubject && matchesClass;
     });
     return sortRows(filtered, sort);
-  }, [classFilter, query, rows, sort, statusFilter, subjectFilter]);
+  }, [classFilter, query, rows, sort, subjectFilter]);
 
   const selectedAssignments = useMemo(() => rows.filter((row) => selectedIds.includes(row.id)), [rows, selectedIds]);
 
@@ -212,7 +199,7 @@ export default function AssignmentsPage() {
       {message && <p className="mb-4 rounded-md bg-blue-50 px-3 py-2 text-sm font-semibold text-action">{message}</p>}
 
       <Card className="mb-4">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <label className="grid gap-2 text-sm font-semibold">
             숙제 검색
             <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="숙제명 검색" />
@@ -233,16 +220,6 @@ export default function AssignmentsPage() {
               {classFilterOptions.map(([classId, className]) => (
                 <option key={classId} value={classId}>{className}</option>
               ))}
-            </Select>
-          </label>
-          <label className="grid gap-2 text-sm font-semibold">
-            상태 필터
-            <Select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-              <option value="all">전체</option>
-              <option value="published">게시됨</option>
-              <option value="draft">비공개</option>
-              <option value="closed">종료</option>
-              <option value="archived">보관됨</option>
             </Select>
           </label>
           <label className="grid gap-2 text-sm font-semibold">
@@ -277,9 +254,8 @@ export default function AssignmentsPage() {
                       <h2 className="text-lg font-extrabold text-ink">{row.title}</h2>
                       <p className="mt-1 text-sm text-slate-600">{row.description || "설명이 없습니다."}</p>
                       <div className="mt-3 flex flex-wrap gap-2">
-                        <Badge tone="blue">{subjectLabel(row.assignmentSubject)}</Badge>
+                        <Badge tone={row.targetCount > 0 ? "green" : "gray"}>{row.targetCount > 0 ? "배정됨" : "미배정"}</Badge>
                         <Badge>{typeLabel(row.assignmentType)}</Badge>
-                        <Badge tone={statusTone(row.status)}>{statusLabel(row.status)}</Badge>
                       </div>
                     </div>
                   </div>
@@ -308,6 +284,7 @@ export default function AssignmentsPage() {
                       {row.classSummaries.map((summary) => (
                         <div key={`${row.id}-${summary.classId}`} className="rounded-md border border-line bg-white p-3">
                           <p className="font-bold text-ink">{summary.className}</p>
+                          {summary.subjectName && <Badge tone="blue">{summary.subjectName}</Badge>}
                           <p className="mt-2 leading-6 text-slate-700">
                             {summary.studentNames.length > 0 ? summary.studentNames.join(", ") : "배정된 학생이 없습니다."}
                           </p>
@@ -363,7 +340,9 @@ function AssignmentTargetModal({
   onClose: () => void;
   onAssigned: (assignedCount: number) => void;
 }) {
+  const [modalClasses, setModalClasses] = useState(classes);
   const [targetMap, setTargetMap] = useState<Record<string, TargetSelection>>({});
+  const [subjectDrafts, setSubjectDrafts] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
   const [isPending, startTransition] = useTransition();
   const targets = Object.values(targetMap);
@@ -379,6 +358,7 @@ function AssignmentTargetModal({
         ...current,
         [classItem.id]: {
           classId: classItem.id,
+          classSubjectId: classItem.subjects[0]?.id ?? "",
           dueDate: todayDate(),
           dueTime: "23:59",
           visibility: "published",
@@ -408,11 +388,38 @@ function AssignmentTargetModal({
     });
   }
 
+  async function createSubject(classId: string) {
+    const name = subjectDrafts[classId]?.trim();
+    if (!name) {
+      setError("추가할 과목명을 입력해주세요.");
+      return;
+    }
+    const response = await fetch(`/api/teacher/classes/${classId}/subjects`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.subject) {
+      setError(data.error ?? "과목을 추가하지 못했습니다.");
+      return;
+    }
+    setModalClasses((current) => current.map((classItem) => (
+      classItem.id === classId
+        ? { ...classItem, subjects: [...classItem.subjects, data.subject] }
+        : classItem
+    )));
+    setSubjectDrafts((current) => ({ ...current, [classId]: "" }));
+    updateTarget(classId, { classSubjectId: data.subject.id });
+    setError("");
+  }
+
   function validate() {
     if (assignments.length === 0) return "배정할 숙제를 먼저 선택해주세요.";
     if (targets.length === 0) return "배정할 반을 1개 이상 선택해주세요.";
     for (const target of targets) {
       if (!target.dueDate || !target.dueTime) return "선택한 반마다 마감일과 마감 시간을 입력해주세요.";
+      if (!target.classSubjectId) return "배정할 반 과목을 선택해주세요.";
       if (target.targetType === "partial" && target.studentIds.length === 0) return "일부 학생만 배정할 때는 학생을 1명 이상 선택해주세요.";
     }
     return "";
@@ -433,6 +440,7 @@ function AssignmentTargetModal({
           assignmentIds: assignments.map((assignment) => assignment.id),
           targets: targets.map((target) => ({
             classId: target.classId,
+            classSubjectId: target.classSubjectId,
             dueDate: target.dueDate,
             dueTime: target.dueTime,
             visibility: target.visibility,
@@ -477,7 +485,7 @@ function AssignmentTargetModal({
 
         <section className="mt-4 grid gap-3">
           <h3 className="font-bold">대상 반 선택</h3>
-          {classes.map((classItem) => {
+          {modalClasses.map((classItem) => {
             const selected = targetMap[classItem.id];
             const filteredStudents = classItem.students.filter((student) => student.name.includes(selected?.studentSearch ?? ""));
             return (
@@ -491,7 +499,16 @@ function AssignmentTargetModal({
                     </span>
                   </label>
                   {selected && (
-                    <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="grid gap-3 sm:grid-cols-4">
+                      <label className="grid gap-2 text-sm font-semibold">
+                        과목
+                        <Select value={selected.classSubjectId} onChange={(event) => updateTarget(classItem.id, { classSubjectId: event.target.value })}>
+                          <option value="">과목 선택</option>
+                          {classItem.subjects.map((subject) => (
+                            <option key={subject.id} value={subject.id}>{subject.name}</option>
+                          ))}
+                        </Select>
+                      </label>
                       <label className="grid gap-2 text-sm font-semibold">마감일<Input type="date" value={selected.dueDate} onChange={(event) => updateTarget(classItem.id, { dueDate: event.target.value })} /></label>
                       <label className="grid gap-2 text-sm font-semibold">마감 시간<Input type="time" value={selected.dueTime} onChange={(event) => updateTarget(classItem.id, { dueTime: event.target.value })} /></label>
                       <label className="grid gap-2 text-sm font-semibold">공개 여부<Select value={selected.visibility} onChange={(event) => updateTarget(classItem.id, { visibility: event.target.value as TargetSelection["visibility"] })}><option value="published">게시됨</option><option value="draft">비공개</option></Select></label>
@@ -501,6 +518,17 @@ function AssignmentTargetModal({
 
                 {selected && (
                   <div className="mt-4 grid gap-3 border-t border-line pt-4">
+                    <div className="grid gap-2 rounded-md border border-line bg-white p-3 sm:grid-cols-[1fr_auto] sm:items-end">
+                      <label className="grid gap-2 text-sm font-semibold">
+                        과목 바로 추가
+                        <Input
+                          value={subjectDrafts[classItem.id] ?? ""}
+                          onChange={(event) => setSubjectDrafts((current) => ({ ...current, [classItem.id]: event.target.value }))}
+                          placeholder="예: Reading A"
+                        />
+                      </label>
+                      <Button type="button" variant="secondary" onClick={() => createSubject(classItem.id)}>추가 후 선택</Button>
+                    </div>
                     <fieldset className="grid gap-2">
                       <legend className="text-sm font-semibold">대상 학생</legend>
                       <div className="flex flex-wrap gap-4 text-sm font-semibold">

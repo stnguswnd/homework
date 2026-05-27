@@ -9,6 +9,7 @@ export const runtime = "nodejs";
 
 type BulkTargetInput = {
   classId: string;
+  classSubjectId?: string;
   dueDate: string;
   dueTime: string;
   visibility: "published" | "draft";
@@ -73,7 +74,7 @@ export async function POST(request: Request) {
   }
 
   for (const target of targets) {
-    if (!target.classId || !target.dueDate || !target.dueTime) {
+    if (!target.classId || !target.classSubjectId || !target.dueDate || !target.dueTime) {
       return NextResponse.json({ error: "선택한 반마다 마감일과 마감 시간을 입력해주세요." }, { status: 400 });
     }
     if (target.targetType === "partial" && target.studentIds.length === 0) {
@@ -114,6 +115,15 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "선택한 반을 찾을 수 없습니다." }, { status: 400 });
       }
 
+      const subjectResult = await client.query<{ id: string }>(
+        "select id from class_subjects where id = $1 and class_id = $2 and teacher_id = $3 and status = 'active' limit 1",
+        [target.classSubjectId, target.classId, teacherId],
+      );
+      if (!subjectResult.rows[0]) {
+        await client.query("rollback");
+        return NextResponse.json({ error: "선택한 반 과목을 찾을 수 없습니다." }, { status: 400 });
+      }
+
       const students = await findTargetStudents(client, teacherId, target);
       if (students.length === 0) {
         await client.query("rollback");
@@ -125,11 +135,12 @@ export async function POST(request: Request) {
         for (const student of students) {
           await client.query(
             `
-              insert into assignment_targets (id, assignment_id, class_id, student_id, status, due_at)
-              values ($1, $2, $3, $4, 'assigned', $5)
+              insert into assignment_targets (id, assignment_id, class_id, class_subject_id, student_id, status, due_at)
+              values ($1, $2, $3, $4, $5, 'assigned', $6)
               on conflict (assignment_id, student_id)
               do update set
                 class_id = excluded.class_id,
+                class_subject_id = excluded.class_subject_id,
                 due_at = excluded.due_at,
                 status = case
                   when assignment_targets.status in ('submitted', 'late') then assignment_targets.status
@@ -143,7 +154,7 @@ export async function POST(request: Request) {
                 cancelled_by = null,
                 updated_at = now()
             `,
-            [`target-${randomUUID()}`, assignmentId, target.classId, student.id, dueAt],
+            [`target-${randomUUID()}`, assignmentId, target.classId, target.classSubjectId, student.id, dueAt],
           );
           assignedCount += 1;
         }

@@ -300,7 +300,7 @@ export async function getTeacherCalendarItems(teacherId: string, start: string, 
         select
           a.id as assignment_id,
           a.title,
-          a.assignment_subject,
+          cs.name as subject_name,
           coalesce(at.due_at, a.due_at)::date as due_date,
           coalesce(at.class_id, a.class_id) as class_id,
           c.name as class_name,
@@ -309,11 +309,12 @@ export async function getTeacherCalendarItems(teacherId: string, start: string, 
         from assignment_targets at
         join assignments a on a.id = at.assignment_id and a.teacher_id = $1
         left join classes c on c.id = coalesce(at.class_id, a.class_id) and c.teacher_id = a.teacher_id and c.status = 'active'
+        left join class_subjects cs on cs.id = at.class_subject_id and cs.teacher_id = a.teacher_id
         where at.status <> 'cancelled'
           and coalesce(at.due_at, a.due_at)::date between $2::date and $3::date
           and ($4::text is null or coalesce(at.class_id, a.class_id) = $4)
           and (coalesce(at.class_id, a.class_id) is null or c.id is not null)
-        group by a.id, a.title, a.assignment_subject, coalesce(at.due_at, a.due_at)::date, coalesce(at.class_id, a.class_id), c.name
+        group by a.id, a.title, cs.name, coalesce(at.due_at, a.due_at)::date, coalesce(at.class_id, a.class_id), c.name
         order by coalesce(at.due_at, a.due_at)::date asc, c.name asc nulls last, a.title asc
       `,
       [teacherId, start, end, classId ?? null],
@@ -364,7 +365,7 @@ export async function getTeacherCalendarItems(teacherId: string, start: string, 
         startTime: null,
         endTime: null,
         description: null,
-        subject: row.assignment_subject ? String(row.assignment_subject) : null,
+        subject: row.subject_name ? String(row.subject_name) : null,
         status: `${submittedCount}/${targetCount} submitted`,
         assignmentId: row.assignment_id ? String(row.assignment_id) : null,
         targetCount,
@@ -541,13 +542,14 @@ export async function getStudentCalendarEvents(studentId: string, teacherId: str
         at.assignment_id,
         coalesce(at.due_at, a.due_at)::date as date,
         a.title,
-        a.assignment_subject,
+        cs.name as subject_name,
         coalesce(at.status, 'assigned') as target_status,
         coalesce(at.class_id, a.class_id) as class_id,
         c.name as class_name
       from assignment_targets at
       join assignments a on a.id = at.assignment_id
       left join classes c on c.id = coalesce(at.class_id, a.class_id) and c.teacher_id = a.teacher_id
+      left join class_subjects cs on cs.id = at.class_subject_id and cs.teacher_id = a.teacher_id
       where at.student_id = $1
         and a.teacher_id = $2
         and (
@@ -620,7 +622,7 @@ export async function getStudentCalendarEvents(studentId: string, teacherId: str
       title: row.title,
       classId: row.class_id,
       className: row.class_name,
-      subject: row.assignment_subject,
+      subject: row.subject_name,
       status: row.target_status,
     })),
     ...events.rows.map((row) => ({
