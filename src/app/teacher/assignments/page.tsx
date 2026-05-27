@@ -109,6 +109,7 @@ export default function AssignmentsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [deletingId, setDeletingId] = useState("");
 
   async function loadAssignments() {
     setIsLoading(true);
@@ -169,6 +170,28 @@ export default function AssignmentsPage() {
     }
     setMessage("");
     setIsModalOpen(true);
+  }
+
+  async function deleteUnassignedAssignment(row: AssignmentRow) {
+    if (row.targetCount > 0) {
+      setMessage("이미 반이나 학생에게 배정된 과제는 삭제할 수 없습니다.");
+      return;
+    }
+    if (!window.confirm(`"${row.title}" 과제를 삭제할까요?`)) return;
+
+    setDeletingId(row.id);
+    const response = await fetch(`/api/teacher/assignments?id=${encodeURIComponent(row.id)}`, { method: "DELETE" });
+    const data = await response.json().catch(() => ({}));
+    setDeletingId("");
+
+    if (!response.ok) {
+      setMessage(data.error ?? "과제를 삭제하지 못했습니다.");
+      return;
+    }
+
+    setSelectedIds((current) => current.filter((id) => id !== row.id));
+    setMessage("과제를 삭제했습니다.");
+    await loadAssignments();
   }
 
   return (
@@ -270,6 +293,11 @@ export default function AssignmentsPage() {
                     <Button href={`/teacher/assignments/new?assignmentId=${row.id}`} variant="secondary">
                       숙제 수정하기
                     </Button>
+                    {row.targetCount === 0 && (
+                      <Button type="button" variant="danger" onClick={() => deleteUnassignedAssignment(row)} disabled={deletingId === row.id}>
+                        {deletingId === row.id ? "삭제 중..." : "삭제"}
+                      </Button>
+                    )}
                   </div>
                 </div>
 

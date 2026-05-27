@@ -10,6 +10,9 @@ import { assignmentSubjectForType, isSupportedAssignmentType, itemTypeForAssignm
 
 export const runtime = "nodejs";
 
+const MAX_IMAGE_FILE_SIZE = 10 * 1024 * 1024;
+const MAX_AUDIO_FILE_SIZE = 20 * 1024 * 1024;
+
 type AssignmentRow = {
   id: string;
   title: string;
@@ -88,6 +91,14 @@ type AssignmentListRow = {
 
 function safeFileName(fileName: string) {
   return fileName.replace(/[^a-zA-Z0-9._-]/g, "_") || `${randomUUID()}`;
+}
+
+function isImageFile(file: File) {
+  return file.type.startsWith("image/") || /\.(png|jpe?g|gif|webp)$/i.test(file.name);
+}
+
+function isAudioFile(file: File) {
+  return file.type.startsWith("audio/") || /\.(mp3|m4a|wav|webm|ogg)$/i.test(file.name);
 }
 
 async function signedUrl(bucket: string, path: string | null) {
@@ -318,6 +329,22 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "단어를 1개 이상 입력해주세요." }, { status: 400 });
   }
 
+  const existingUploadResult = await query<{
+    image_storage_path: string | null;
+    audio_storage_path: string | null;
+  }>(
+    `
+      select a.image_storage_path, ai.audio_storage_path
+      from assignments a
+      left join assignment_items ai on ai.assignment_id = a.id and ai.order_index = 1
+      where a.id = $1 and a.teacher_id = $2
+      limit 1
+    `,
+    [id, teacherId],
+  );
+  const existingImageStoragePath = existingUploadResult.rows[0]?.image_storage_path ?? null;
+  const existingAudioStoragePath = existingUploadResult.rows[0]?.audio_storage_path ?? null;
+
   const supabase = createSupabaseAdminClient();
   let imageUrl: string | null = null;
   let imageStoragePath: string | null = null;
@@ -327,6 +354,12 @@ export async function POST(request: Request) {
   let audioFileName: string | null = String(formData.get("audioFileName") ?? "").trim() || null;
 
   if (imageFile instanceof File) {
+    if (!isImageFile(imageFile)) {
+      return NextResponse.json({ error: "이미지 파일만 업로드할 수 있습니다." }, { status: 400 });
+    }
+    if (imageFile.size > MAX_IMAGE_FILE_SIZE) {
+      return NextResponse.json({ error: "이미지는 최대 10MB까지 업로드할 수 있습니다." }, { status: 400 });
+    }
     imageFileName = safeFileName(imageFile.name);
     imageStoragePath = `assignments/${id}/images/${imageFileName}`;
     const { error } = await supabase.storage.from(storageBuckets.images).upload(
@@ -337,13 +370,19 @@ export async function POST(request: Request) {
 
     if (error) {
       console.error(error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: `이미지 업로드 실패: ${error.message}` }, { status: 500 });
     }
 
     imageUrl = supabase.storage.from(storageBuckets.images).getPublicUrl(imageStoragePath).data.publicUrl;
   }
 
   if (audioFile instanceof File) {
+    if (!isAudioFile(audioFile)) {
+      return NextResponse.json({ error: "오디오 파일만 업로드할 수 있습니다." }, { status: 400 });
+    }
+    if (audioFile.size > MAX_AUDIO_FILE_SIZE) {
+      return NextResponse.json({ error: "MP3 파일은 최대 20MB까지 업로드할 수 있습니다." }, { status: 400 });
+    }
     audioFileName = safeFileName(audioFile.name);
     audioStoragePath = `assignments/${id}/audio/${audioFileName}`;
     const { error } = await supabase.storage.from(storageBuckets.audio).upload(
@@ -354,7 +393,7 @@ export async function POST(request: Request) {
 
     if (error) {
       console.error(error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: `오디오 업로드 실패: ${error.message}` }, { status: 500 });
     }
 
     audioUrl = supabase.storage.from(storageBuckets.audio).getPublicUrl(audioStoragePath).data.publicUrl;
@@ -529,6 +568,19 @@ export async function POST(request: Request) {
   }
 
   const row = await getAssignmentRow(id, teacherId);
+
+  const staleFiles: Array<{ bucket: string; path: string }> = [];
+  if (imageStoragePath && existingImageStoragePath && existingImageStoragePath !== imageStoragePath) {
+    staleFiles.push({ bucket: storageBuckets.images, path: existingImageStoragePath });
+  }
+  if (audioStoragePath && existingAudioStoragePath && existingAudioStoragePath !== audioStoragePath) {
+    staleFiles.push({ bucket: storageBuckets.audio, path: existingAudioStoragePath });
+  }
+  await Promise.all(staleFiles.map(async (file) => {
+    const { error } = await supabase.storage.from(file.bucket).remove([file.path]);
+    if (error) console.error(error);
+  }));
+
   return NextResponse.json({
     assignment: row ? await mapAssignment(row) : null,
     uploaded: {
@@ -538,6 +590,91 @@ export async function POST(request: Request) {
     assignedCount,
     classCounts,
   });
+}
+
+export async function DELETE(request: Request) {
+  const { teacherId } = await requireTeacherSession();
+  const { searchParams } = new URL(request.url);
+  const id = searchParams.get("id")?.trim();
+
+  if (!id) {
+    return NextResponse.json({ error: "삭제할 과제를 찾을 수 없습니다." }, { status: 400 });
+  }
+
+  const client = await postgresPool.connect();
+  let imageStoragePath: string | null = null;
+  let audioStoragePath: string | null = null;
+
+  try {
+    await client.query("begin");
+
+    const assignmentResult = await client.query<{
+      id: string;
+      image_storage_path: string | null;
+      audio_storage_path: string | null;
+      target_count: number;
+      submission_count: number;
+    }>(
+      `
+        select
+          a.id,
+          a.image_storage_path,
+          ai.audio_storage_path,
+          count(at.id) filter (where at.status <> 'cancelled')::int as target_count,
+          count(distinct sub.id)::int as submission_count
+        from assignments a
+        left join assignment_items ai on ai.assignment_id = a.id
+        left join assignment_targets at on at.assignment_id = a.id
+        left join submissions sub on sub.assignment_id = a.id
+        where a.id = $1 and a.teacher_id = $2
+        group by a.id, a.image_storage_path, ai.audio_storage_path
+        limit 1
+      `,
+      [id, teacherId],
+    );
+    const assignment = assignmentResult.rows[0];
+
+    if (!assignment) {
+      await client.query("rollback");
+      return NextResponse.json({ error: "삭제할 과제를 찾을 수 없습니다." }, { status: 404 });
+    }
+
+    if (assignment.target_count > 0) {
+      await client.query("rollback");
+      return NextResponse.json({ error: "이미 반이나 학생에게 배정된 과제는 삭제할 수 없습니다. 배정 관리에서 취소해주세요." }, { status: 409 });
+    }
+    if (assignment.submission_count > 0) {
+      await client.query("rollback");
+      return NextResponse.json({ error: "학생 제출 기록이 있는 과제는 삭제할 수 없습니다." }, { status: 409 });
+    }
+
+    imageStoragePath = assignment.image_storage_path;
+    audioStoragePath = assignment.audio_storage_path;
+
+    await client.query("delete from assignment_vocabulary_items where assignment_id = $1", [id]);
+    await client.query("delete from assignment_items where assignment_id = $1", [id]);
+    await client.query("delete from assignment_targets where assignment_id = $1", [id]);
+    await client.query("delete from assignments where id = $1 and teacher_id = $2", [id, teacherId]);
+    await client.query("commit");
+  } catch (error) {
+    await client.query("rollback");
+    console.error(error);
+    return NextResponse.json({ error: "과제를 삭제하지 못했습니다." }, { status: 500 });
+  } finally {
+    client.release();
+  }
+
+  const supabase = createSupabaseAdminClient();
+  if (imageStoragePath) {
+    const { error } = await supabase.storage.from(storageBuckets.images).remove([imageStoragePath]);
+    if (error) console.error(error);
+  }
+  if (audioStoragePath) {
+    const { error } = await supabase.storage.from(storageBuckets.audio).remove([audioStoragePath]);
+    if (error) console.error(error);
+  }
+
+  return NextResponse.json({ ok: true });
 }
 
 function parseTargetAssignments(value: FormDataEntryValue | null): AssignmentTargetInput[] {

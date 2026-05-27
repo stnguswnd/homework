@@ -20,6 +20,17 @@ import {
   type WritingUnit,
 } from "@/lib/assignmentTypes";
 
+const MAX_IMAGE_FILE_SIZE = 10 * 1024 * 1024;
+const MAX_AUDIO_FILE_SIZE = 20 * 1024 * 1024;
+
+function isImageFile(file: File) {
+  return file.type.startsWith("image/") || /\.(png|jpe?g|gif|webp)$/i.test(file.name);
+}
+
+function isAudioFile(file: File) {
+  return file.type.startsWith("audio/") || /\.(mp3|m4a|wav|webm|ogg)$/i.test(file.name);
+}
+
 type VocabularyRow = {
   word: string;
   meaning: string;
@@ -167,6 +178,15 @@ function NewAssignmentForm() {
       setTemplate((current) => ({ ...current, imageUrl: "" }));
       return;
     }
+    if (!isImageFile(file)) {
+      setMessage("이미지 파일만 업로드할 수 있습니다.");
+      return;
+    }
+    if (file.size > MAX_IMAGE_FILE_SIZE) {
+      setMessage("이미지는 최대 10MB까지 업로드할 수 있습니다.");
+      return;
+    }
+    setMessage("");
     setImageFile(file);
     const reader = new FileReader();
     reader.onload = () => {
@@ -176,6 +196,15 @@ function NewAssignmentForm() {
   }
 
   function onAudioChange(file?: File) {
+    if (file && !isAudioFile(file)) {
+      setMessage("오디오 파일만 업로드할 수 있습니다.");
+      return;
+    }
+    if (file && file.size > MAX_AUDIO_FILE_SIZE) {
+      setMessage("MP3 파일은 최대 20MB까지 업로드할 수 있습니다.");
+      return;
+    }
+    setMessage("");
     setAudioFile(file ?? null);
     setTemplate((current) => ({ ...current, audioFileName: file?.name ?? current.audioFileName }));
   }
@@ -220,7 +249,6 @@ function NewAssignmentForm() {
       formData.set("minRecordingSec", template.minRecordingSec);
       formData.set("maxRecordingSec", template.maxRecordingSec);
       formData.set("audioFileName", template.audioFileName);
-      formData.set("imageUrl", template.imageUrl);
       formData.set("writingMode", template.writingMode);
       formData.set("writingUnit", template.writingUnit);
       formData.set("writingUnitCount", "4");
