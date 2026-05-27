@@ -68,6 +68,10 @@ export function ListeningHomework({ assignment }: { assignment: Assignment }) {
     });
   }
 
+  function playOriginalAudio() {
+    audioRef.current?.play().catch(() => undefined);
+  }
+
   return (
     <div className="grid gap-4">
       <Header assignment={assignment} />
@@ -96,7 +100,7 @@ export function ListeningHomework({ assignment }: { assignment: Assignment }) {
         {error && <p className="mt-3 text-sm font-semibold text-danger">{error}</p>}
       </Card>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Button type="button" className="cursor-default hover:bg-action">듣고 연습하기</Button>
+        <Button type="button" className="hover:bg-action" onClick={playOriginalAudio}>듣고 연습하기</Button>
         <Button type="button" disabled={!hasListenedFullAudio || pending} onClick={() => setCompleteOpen(true)}>완료하기</Button>
       </div>
       {completeOpen && (

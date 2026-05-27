@@ -85,6 +85,13 @@ export function RlRecordingHomework({ assignment }: { assignment: Assignment }) 
     await recorder.startRecording();
   }
 
+  function playOriginalAudio() {
+    if (recorder.state === "recording") recorder.stopRecording();
+    recordedAudioRef.current?.pause();
+    setStep(1);
+    window.setTimeout(() => audioRef.current?.play().catch(() => undefined), 0);
+  }
+
   function confirmSubmit() {
     const recordingBlob = recorder.recordingBlob;
     if (!recordingBlob || !item || !canSubmit) return;
@@ -166,7 +173,7 @@ export function RlRecordingHomework({ assignment }: { assignment: Assignment }) 
         )}
       </Card>
       <div className="grid gap-3 sm:grid-cols-3">
-        <Button type="button" variant={step === 1 ? "primary" : "secondary"} className={step === 1 ? "cursor-default hover:bg-action" : undefined} onClick={() => goStep(1)}>듣고 연습하기</Button>
+        <Button type="button" variant={step === 1 ? "primary" : "secondary"} className={step === 1 ? "hover:bg-action" : undefined} onClick={playOriginalAudio}>듣고 연습하기</Button>
         <Button type="button" variant={step === 2 ? "primary" : "secondary"} className={step === 2 ? "cursor-default hover:bg-action" : undefined} disabled={!hasListenedFullAudio} onClick={() => goStep(2)}>녹음하기</Button>
         <Button type="button" disabled={!canSubmit} onClick={() => setSubmitOpen(true)}>제출하기</Button>
       </div>
