@@ -798,7 +798,7 @@ function SubjectAssignmentModal({
   onAssigned: (assignedCount: number) => void;
 }) {
   const [query, setQuery] = useState("");
-  const [selectedAssignmentId, setSelectedAssignmentId] = useState("");
+  const [selectedAssignmentIds, setSelectedAssignmentIds] = useState<string[]>([]);
   const [dueDate, setDueDate] = useState(todayDate());
   const [dueTime, setDueTime] = useState("23:59");
   const [visibility, setVisibility] = useState<"published" | "draft">("published");
@@ -829,9 +829,17 @@ function SubjectAssignmentModal({
     setStudentIds((current) => current.includes(studentId) ? current.filter((id) => id !== studentId) : [...current, studentId]);
   }
 
+  function toggleAssignment(assignmentId: string) {
+    setSelectedAssignmentIds((current) => (
+      current.includes(assignmentId)
+        ? current.filter((id) => id !== assignmentId)
+        : [...current, assignmentId]
+    ));
+  }
+
   function assignHomework() {
-    if (!selectedAssignmentId) {
-      setError("배정할 과제를 선택해주세요.");
+    if (selectedAssignmentIds.length === 0) {
+      setError("배정할 과제를 1개 이상 선택해주세요.");
       return;
     }
     if (!dueDate || !dueTime) {
@@ -848,7 +856,7 @@ function SubjectAssignmentModal({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          assignmentIds: [selectedAssignmentId],
+          assignmentIds: selectedAssignmentIds,
           targets: [{
             classId,
             classSubjectId: subject.id,
@@ -888,10 +896,13 @@ function SubjectAssignmentModal({
         </div>
 
         <section className="grid gap-3">
-          <label className="grid gap-2 text-sm font-semibold">
-            기존 과제 찾기
-            <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="과제명 검색" />
-          </label>
+          <div className="grid gap-2">
+            <label className="grid gap-2 text-sm font-semibold">
+              기존 과제 찾기
+              <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="과제명 검색" />
+            </label>
+            <p className="text-sm font-semibold text-slate-500">선택 {selectedAssignmentIds.length}개</p>
+          </div>
           <div className="grid max-h-72 gap-2 overflow-auto rounded-md border border-line p-2">
             {filteredAssignments.length ? (
               filteredAssignments.map((assignment) => (
@@ -899,14 +910,14 @@ function SubjectAssignmentModal({
                   key={assignment.id}
                   className={cn(
                     "flex cursor-pointer items-start gap-3 rounded-md border border-line bg-white p-3 transition hover:border-action",
-                    selectedAssignmentId === assignment.id && "border-action bg-blue-50 ring-1 ring-action",
+                    selectedAssignmentIds.includes(assignment.id) && "border-action bg-blue-50 ring-1 ring-action",
                   )}
                 >
                   <input
-                    type="radio"
+                    type="checkbox"
                     className="mt-1"
-                    checked={selectedAssignmentId === assignment.id}
-                    onChange={() => setSelectedAssignmentId(assignment.id)}
+                    checked={selectedAssignmentIds.includes(assignment.id)}
+                    onChange={() => toggleAssignment(assignment.id)}
                   />
                   <span className="min-w-0">
                     <span className="block truncate font-bold">{assignment.title}</span>
@@ -966,7 +977,7 @@ function SubjectAssignmentModal({
 
         <div className="flex justify-end gap-2">
           <Button type="button" variant="secondary" onClick={onClose}>취소</Button>
-          <Button type="button" onClick={assignHomework} disabled={isPending}>{isPending ? "배정 중..." : "배정하기"}</Button>
+          <Button type="button" onClick={assignHomework} disabled={isPending}>{isPending ? "배정 중..." : `배정하기 (${selectedAssignmentIds.length})`}</Button>
         </div>
       </div>
     </Modal>
