@@ -128,9 +128,9 @@ export default async function StudentHomePage() {
 
   return (
     <StudentLayout title="학생 홈">
-      <div className="grid gap-6">
+      <div className="grid gap-8">
+        <StudentTeamHeader studentName={profile.name} classNames={profile.class_names} assignments={assignments} upcomingTest={upcomingTests[0]} />
         <StudentNoticeCarousel notices={notices} />
-        <StudentTeamHeader studentName={profile.name} classNames={profile.class_names} />
         <WeeklyHomeworkSection assignments={assignments} />
         <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
           <StudentCalendarClient events={calendarEvents} />
@@ -141,33 +141,68 @@ export default async function StudentHomePage() {
   );
 }
 
-function StudentTeamHeader({ studentName, classNames }: { studentName: string; classNames: string[] }) {
+function StudentTeamHeader({
+  studentName,
+  classNames,
+  assignments,
+  upcomingTest,
+}: {
+  studentName: string;
+  classNames: string[];
+  assignments: AssignmentWithTarget[];
+  upcomingTest?: UpcomingTest;
+}) {
+  const incompleteCount = assignments.filter((assignment) => homeworkStatus(assignment) === "incomplete" || homeworkStatus(assignment) === "returned").length;
   return (
-    <Card className="bg-slate-50">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <section className="student-hero-panel px-5 py-7 text-white md:px-8 md:py-10">
+      <div className="grid gap-8 lg:grid-cols-[1.35fr_0.65fr] lg:items-end">
         <div>
-          <p className="text-sm font-bold text-slate-500">내 반</p>
-          <h2 className="mt-1 text-xl font-extrabold">{classNames[0] ?? "배정된 반 없음"}</h2>
+          <span className="inline-flex w-fit rounded-full bg-white/18 px-4 py-2 text-sm font-bold text-[#dcfce7] ring-1 ring-white/25">
+            {classNames[0] ?? "배정된 반 없음"}
+          </span>
+          <h1 className="mt-5 max-w-2xl text-[clamp(2.2rem,7vw,4.2rem)] font-bold leading-[1.25] tracking-[-0.04em]">
+            {studentName} 학생의 오늘 학습을 확인해요
+          </h1>
+          <p className="mt-4 max-w-2xl text-base leading-7 text-[#dcfce7] md:text-lg">
+            숙제, 공지, 수업 캘린더와 시험 결과를 한 화면에서 이어서 볼 수 있어요.
+          </p>
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+            <Button href="#weekly-homework" className="bg-white text-[#14532d] hover:bg-[#f3faf4]">
+              숙제 바로가기
+            </Button>
+            <Button href="#student-calendar" variant="secondary" className="border-white/30 bg-white/12 text-white hover:bg-white/20">
+              캘린더 보기
+            </Button>
+          </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Badge tone="blue">{studentName}</Badge>
-          {classNames.slice(1).map((name) => (
-            <Badge key={name}>{name}</Badge>
-          ))}
+        <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
+          <HeroMetric label="진행할 숙제" value={`${incompleteCount}개`} />
+          <HeroMetric label="전체 과제" value={`${assignments.length}개`} />
+          <HeroMetric label="다음 시험" value={upcomingTest ? formatDate(upcomingTest.date) : "예정 없음"} />
         </div>
       </div>
-    </Card>
+    </section>
+  );
+}
+
+function HeroMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-[18px] border border-white/18 bg-white/12 p-4 backdrop-blur">
+      <p className="text-sm font-bold text-[#dcfce7]">{label}</p>
+      <p className="mt-2 text-2xl font-extrabold tracking-[-0.03em]">{value}</p>
+    </div>
   );
 }
 
 function WeeklyHomeworkSection({ assignments }: { assignments: AssignmentWithTarget[] }) {
   const weeklyAssignments = assignments.slice(0, 3);
   return (
-    <section>
-      <div className="mb-3 flex items-end justify-between gap-3">
+    <section id="weekly-homework" className="student-section">
+      <div className="mb-5 flex items-end justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-extrabold">이번주 숙제</h2>
-          <p className="mt-1 text-sm text-slate-500">이번 주에 해야 할 숙제를 확인하고 제출해 주세요.</p>
+          <Badge tone="green">Weekly Homework</Badge>
+          <h2 className="mt-3 text-[clamp(1.9rem,3.8vw,3rem)] font-bold leading-[1.3]">이번주 숙제</h2>
+          <p className="mt-2 text-base leading-7 text-[#5b655d]">이번 주에 해야 할 숙제를 확인하고 제출해 주세요.</p>
         </div>
       </div>
       {weeklyAssignments.length === 0 ? (
@@ -199,26 +234,26 @@ function HomeworkSubjectCard({ assignment }: { assignment: AssignmentWithTarget 
   ];
 
   return (
-    <Card className="flex min-h-[320px] flex-col">
+    <Card className="flex min-h-[340px] flex-col">
       <div className="flex items-start justify-between gap-3">
         <div>
           <Badge tone="blue">{subjectForAssignment(assignment)}</Badge>
-          <p className="mt-2 text-sm font-semibold text-slate-500">수업 시간</p>
+          <p className="mt-3 text-sm font-semibold text-[#5b655d]">수업 시간</p>
           <p className="text-sm font-bold text-ink">반 캘린더에서 확인</p>
         </div>
         {assignment.dueAt && <Badge tone="yellow">마감 {formatDateTime(assignment.dueAt)}</Badge>}
       </div>
       <div className="mt-5 flex-1">
-        <h3 className="text-lg font-bold">이번주 숙제</h3>
+        <h3 className="text-2xl font-bold leading-[1.3]">{assignment.title}</h3>
         <div className="mt-3 grid gap-2">
           {homeworkItems.map((itemText) => (
-            <div key={itemText} className="rounded-md border border-line bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700">
+            <div key={itemText} className="rounded-[14px] border border-line bg-[#f3faf4] px-3 py-2 text-sm font-semibold text-[#5b655d]">
               {itemText}
             </div>
           ))}
         </div>
       </div>
-      <div className="mt-5 rounded-lg bg-paper p-3">
+      <div className="mt-5 rounded-[18px] bg-paper p-3">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm font-bold">숙제 상태</span>
           <Badge tone={homeworkStatusTone(status)}>{homeworkStatusLabel(status)}</Badge>
@@ -237,8 +272,9 @@ function HomeworkSubjectCard({ assignment }: { assignment: AssignmentWithTarget 
 
 function TestResultSection({ upcomingTests, results }: { upcomingTests: UpcomingTest[]; results: TestResult[] }) {
   return (
-    <section>
-      <h2 className="mb-3 text-2xl font-extrabold">시험 결과</h2>
+    <section className="student-section">
+      <Badge tone="green">Tests</Badge>
+      <h2 className="mb-5 mt-3 text-[clamp(1.9rem,3.8vw,3rem)] font-bold leading-[1.3]">시험 결과</h2>
       <div className="grid gap-4">
         <UpcomingTestCard test={upcomingTests[0]} />
         <TestHistoryList results={results} />
@@ -254,11 +290,11 @@ function UpcomingTestCard({ test }: { test?: UpcomingTest }) {
       {!test ? (
         <p className="mt-3 text-sm text-slate-500">예정된 시험이 없습니다.</p>
       ) : (
-        <div className="mt-4 rounded-lg bg-blue-50 p-4">
+        <div className="mt-4 rounded-[18px] bg-[#f3faf4] p-4">
           <Badge tone="blue">{test.subject}</Badge>
           <h4 className="mt-3 text-lg font-extrabold">{test.title}</h4>
-          <p className="mt-1 text-sm font-semibold text-slate-700">{formatDate(test.date)} · {formatTimeRange(test.startTime, test.endTime)}</p>
-          <p className="mt-2 text-sm text-slate-600">범위: {test.scope || "-"}</p>
+          <p className="mt-1 text-sm font-semibold text-[#5b655d]">{formatDate(test.date)} · {formatTimeRange(test.startTime, test.endTime)}</p>
+          <p className="mt-2 text-sm text-[#5b655d]">범위: {test.scope || "-"}</p>
         </div>
       )}
     </Card>
@@ -274,7 +310,7 @@ function TestHistoryList({ results }: { results: TestResult[] }) {
       ) : (
         <div className="mt-4 grid gap-3">
           {results.map((result) => (
-            <article key={result.id} className="rounded-md border border-line p-3">
+            <article key={result.id} className="rounded-[18px] border border-line bg-[#f7fbf6] p-3">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h4 className="font-bold">{result.title}</h4>

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Homework Studio Mock",
+  title: "Janetimes Studio",
   description: "Student homework management frontend mock"
 };
 

@@ -92,18 +92,19 @@ export function StudentCalendarClient({ events }: { events: StudentCalendarEvent
   const selectedEvents = eventsByDate.get(selectedDate) ?? [];
 
   return (
-    <section>
-      <h2 className="mb-3 text-2xl font-extrabold">캘린더</h2>
+    <section id="student-calendar" className="student-section">
+      <Badge tone="green">Calendar</Badge>
+      <h2 className="mb-5 mt-3 text-[clamp(1.9rem,3.8vw,3rem)] font-bold leading-[1.3]">캘린더</h2>
       <Card>
         <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h3 className="text-lg font-bold">{monthTitle(firstDate)}</h3>
-            <p className="mt-1 text-sm text-slate-500">날짜를 누르면 숙제, 시험, 휴강, 보강 일정을 확인할 수 있어요.</p>
+            <p className="mt-1 text-sm leading-6 text-[#5b655d]">날짜를 누르면 숙제, 시험, 휴강, 보강 일정을 확인할 수 있어요.</p>
           </div>
           <Badge tone="blue">반 공유 캘린더</Badge>
         </div>
 
-        <div className="grid grid-cols-7 gap-1 text-center text-xs font-bold text-slate-500">
+        <div className="grid grid-cols-7 gap-1 text-center text-xs font-bold text-[#5b655d]">
           {["일", "월", "화", "수", "목", "금", "토"].map((day) => (
             <span key={day}>{day}</span>
           ))}
@@ -120,9 +121,9 @@ export function StudentCalendarClient({ events }: { events: StudentCalendarEvent
                 disabled={!date}
                 onClick={() => date && setSelectedDate(date)}
                 className={cn(
-                  "min-h-20 rounded-md border border-line bg-white p-1.5 text-left text-sm transition disabled:bg-transparent",
-                  date && "hover:border-action hover:bg-blue-50",
-                  isSelected && "border-action bg-blue-50 ring-1 ring-action",
+                  "min-h-20 rounded-[14px] border border-line bg-white p-1.5 text-left text-sm transition disabled:bg-transparent",
+                  date && "hover:border-action hover:bg-[#f3faf4]",
+                  isSelected && "border-action bg-[#f3faf4] ring-1 ring-action",
                 )}
               >
                 {date && (
@@ -154,13 +155,13 @@ export function StudentCalendarClient({ events }: { events: StudentCalendarEvent
         <div className="mt-5 border-t border-line pt-4">
           <h4 className="font-bold">{formatDate(selectedDate)} 일정</h4>
           {selectedEvents.length === 0 ? (
-            <p className="mt-3 rounded-md border border-dashed border-line p-4 text-center text-sm text-slate-500">선택한 날짜에 등록된 일정이 없습니다.</p>
+            <p className="mt-3 rounded-[18px] border border-dashed border-line p-4 text-center text-sm text-[#5b655d]">선택한 날짜에 등록된 일정이 없습니다.</p>
           ) : (
             <div className="mt-3 grid gap-2">
               {selectedEvents.map((event) => {
                 const timeRange = formatTimeRange(event.startTime, event.endTime, "");
                 return (
-                  <article key={event.id} className="rounded-md border border-line bg-slate-50 px-3 py-2">
+                  <article key={event.id} className="rounded-[18px] border border-line bg-[#f7fbf6] px-3 py-2">
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge tone={eventTone(event.type)}>{eventLabel(event.type)}</Badge>
                       {event.className && <span className="text-xs font-semibold text-slate-500">{event.className}</span>}

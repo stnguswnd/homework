@@ -10,11 +10,11 @@ type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 
 export function Button({ className, variant = "primary", href, children, ...props }: ButtonProps) {
   const classes = cn(
-    "inline-flex min-h-10 items-center justify-center rounded-md px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50",
-    variant === "primary" && "bg-action text-white hover:bg-blue-700",
-    variant === "secondary" && "border border-line bg-white text-ink hover:bg-slate-50",
+    "inline-flex min-h-[46px] items-center justify-center rounded-full px-[18px] py-2 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-50",
+    variant === "primary" && "bg-action text-white shadow-soft hover:bg-[#14532d]",
+    variant === "secondary" && "border border-line bg-white text-[#14532d] hover:bg-[#f3faf4]",
     variant === "danger" && "bg-danger text-white hover:bg-red-700",
-    variant === "ghost" && "text-slate-700 hover:bg-slate-100",
+    variant === "ghost" && "text-[#14532d] hover:bg-[#dcfce7]",
     className
   );
 

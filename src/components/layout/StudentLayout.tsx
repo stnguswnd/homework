@@ -5,24 +5,26 @@ import { logoutAction } from "@/lib/auth/actions";
 
 export function StudentLayout({ children, title }: { children: ReactNode; title: string }) {
   return (
-    <div className="min-h-screen bg-white">
-      <header className="sticky top-0 z-10 border-b border-line bg-white/95 px-4 py-3">
-        <div className="mx-auto flex max-w-7xl items-center justify-between">
-          <Link href="/student/home" className="font-bold">
-            Student Homework
+    <div className="student-shell">
+      <header className="fixed inset-x-0 top-0 z-[60] border-b border-line bg-white/95 px-4 py-3 backdrop-blur-xl">
+        <div className="student-container flex h-[54px] items-center justify-between">
+          <Link href="/student/home" className="text-lg font-extrabold tracking-[-0.03em] text-[#14532d]">
+            Janetimes Studio
           </Link>
           <div className="flex items-center gap-2 sm:gap-3">
-            <Link href="/student/home" className="rounded-md px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+            <Link href="/student/home" className="rounded-full px-3 py-2 text-sm font-bold text-[#14532d] hover:bg-[#dcfce7]">
               과제 목록
             </Link>
-            <span className="hidden text-sm text-slate-500 md:inline">{title}</span>
+            <span className="hidden rounded-full bg-[#dcfce7] px-3 py-1 text-sm font-bold text-[#14532d] md:inline">{title}</span>
             <form action={logoutAction}>
-              <button className="rounded-md border border-line px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">로그아웃</button>
+              <button className="rounded-full border border-line bg-white px-3 py-2 text-sm font-bold text-[#14532d] hover:bg-[#f3faf4]">
+                로그아웃
+              </button>
             </form>
           </div>
         </div>
       </header>
-      <main className="mx-auto max-w-7xl px-4 py-6">{children}</main>
+      <main className="student-container pb-10 pt-6 md:pb-14">{children}</main>
     </div>
   );
 }

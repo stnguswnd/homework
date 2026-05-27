@@ -30,10 +30,13 @@ export function StudentNoticeCarousel({ notices }: { notices: StudentNotice[] })
   }
 
   return (
-    <section>
-      <div className="mb-3 flex items-center justify-between">
-        <h1 className="text-2xl font-extrabold text-ink">공지사항</h1>
-        <span className="text-sm font-semibold text-slate-500">{notices.length}개</span>
+    <section className="student-section">
+      <div className="mb-5 flex items-end justify-between gap-4">
+        <div>
+          <Badge tone="green">Notice</Badge>
+          <h2 className="mt-3 text-[clamp(1.9rem,3.8vw,3rem)] font-bold leading-[1.3] text-ink">공지사항</h2>
+        </div>
+        <span className="rounded-full bg-[#dcfce7] px-3 py-1 text-sm font-bold text-[#14532d]">{notices.length}개</span>
       </div>
 
       {notices.length === 0 ? (
@@ -41,23 +44,23 @@ export function StudentNoticeCarousel({ notices }: { notices: StudentNotice[] })
           <p className="text-sm text-slate-500">등록된 공지사항이 없습니다.</p>
         </Card>
       ) : (
-        <Card>
+        <Card className="p-4 md:p-5">
           <div className="grid gap-4 lg:grid-cols-2">
             {visibleNotices.map((notice) => (
-              <article key={`${notice.id}-${index}`} className="grid min-h-[190px] overflow-hidden rounded-lg border border-line bg-white md:grid-cols-[170px_1fr]">
+              <article key={`${notice.id}-${index}`} className="grid min-h-[210px] overflow-hidden rounded-[18px] border border-line bg-white md:grid-cols-[190px_1fr]">
                 {notice.imageUrl ? (
-                  <img src={notice.imageUrl} alt="" className="h-40 w-full object-cover md:h-full" />
+                  <img src={notice.imageUrl} alt="" className="h-44 w-full object-cover md:h-full" />
                 ) : (
-                  <div className="grid h-32 place-items-center bg-blue-50 text-sm font-bold text-action md:h-full">Notice</div>
+                  <div className="grid h-40 place-items-center bg-[#e8f6eb] text-sm font-bold text-[#14532d] md:h-full">Notice</div>
                 )}
 
                 <div className="flex min-w-0 flex-col p-4">
                   <div className="flex items-start justify-between gap-3">
-                    <p className="text-xs font-bold text-slate-500">{formatDate(notice.createdAt)}</p>
+                    <p className="text-xs font-bold text-[#5b655d]">{formatDate(notice.createdAt)}</p>
                     <Badge tone={notice.targetType === "all" ? "blue" : "green"}>{notice.targetType === "all" ? "전체" : "반"}</Badge>
                   </div>
                   <h2 className="mt-2 truncate text-lg font-bold">{notice.title}</h2>
-                  <p className="mt-2 line-clamp-3 leading-7 text-slate-600">{notice.content}</p>
+                  <p className="mt-2 line-clamp-3 leading-7 text-[#5b655d]">{notice.content}</p>
                 </div>
               </article>
             ))}
@@ -71,7 +74,7 @@ export function StudentNoticeCarousel({ notices }: { notices: StudentNotice[] })
                   type="button"
                   aria-label={`${dotIndex + 1}번째 공지 보기`}
                   onClick={() => setIndex(dotIndex)}
-                  className={`h-2 rounded-full transition-all ${dotIndex === index ? "w-6 bg-action" : "w-2 bg-slate-300"}`}
+                  className={`h-2 rounded-full transition-all ${dotIndex === index ? "w-6 bg-action" : "w-2 bg-[#d8e9dc]"}`}
                 />
               ))}
             </div>
