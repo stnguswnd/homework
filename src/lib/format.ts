@@ -5,6 +5,7 @@ export function formatDateTime(value?: string) {
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: "Asia/Seoul",
   }).format(new Date(value));
 }
 
@@ -16,5 +17,6 @@ export function formatDue(value?: string) {
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: "Asia/Seoul",
   }).format(date);
 }
