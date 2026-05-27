@@ -113,7 +113,7 @@ export async function POST(request: Request) {
       ],
     );
 
-    await client.query("update assignment_targets set status = $2, submitted_at = now(), updated_at = now() where id = $1", [row.target_id, targetStatus]);
+    await client.query("update assignment_targets set status = $2, submitted_at = now(), reviewed = false, updated_at = now() where id = $1", [row.target_id, targetStatus]);
     await client.query("commit");
 
     return NextResponse.json({ submissionId, submittedAt: new Date().toISOString(), status: targetStatus });

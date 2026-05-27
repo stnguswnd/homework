@@ -72,7 +72,13 @@ export async function GET(request: Request) {
       left join students s on s.id = cm.student_id and s.status = 'active'
       left join assignment_targets at on at.student_id = s.id and at.class_id = c.id
       left join assignments a on a.id = at.assignment_id and a.teacher_id = c.teacher_id
-      left join submissions sub on sub.assignment_id = a.id and sub.student_id = s.id
+      left join lateral (
+        select sub.id, sub.status
+        from submissions sub
+        where sub.assignment_id = a.id and sub.student_id = s.id
+        order by sub.submitted_at desc nulls last, sub.updated_at desc
+        limit 1
+      ) sub on true
       where c.teacher_id = $1 and c.status = $2
       order by c.created_at asc, s.name asc, a.updated_at desc nulls last
     `,

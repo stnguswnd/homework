@@ -127,7 +127,7 @@ export async function POST(request: Request) {
     );
 
     await client.query(
-      "update assignment_targets set status = $2, submitted_at = now(), updated_at = now() where id = $1",
+      "update assignment_targets set status = $2, submitted_at = now(), reviewed = false, updated_at = now() where id = $1",
       [target.rows[0].target_id, targetStatus],
     );
 
