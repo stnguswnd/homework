@@ -73,6 +73,37 @@ function buildMonthDays(anchor = "2026-05-01") {
   ];
 }
 
+function toDateString(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function monthStart(value: string) {
+  const date = new Date(`${dateOnly(value)}T00:00:00`);
+  return toDateString(new Date(date.getFullYear(), date.getMonth(), 1));
+}
+
+function addMonths(value: string, amount: number) {
+  const date = new Date(`${dateOnly(value)}T00:00:00`);
+  return toDateString(new Date(date.getFullYear(), date.getMonth() + amount, 1));
+}
+
+function isSameMonth(left: string, right: string) {
+  return dateOnly(left).slice(0, 7) === dateOnly(right).slice(0, 7);
+}
+
+function selectedDateForMonth(targetMonth: string, currentSelectedDate: string) {
+  const target = new Date(`${dateOnly(targetMonth)}T00:00:00`);
+  const today = toDateString(new Date());
+  if (isSameMonth(today, targetMonth)) return today;
+
+  const current = new Date(`${dateOnly(currentSelectedDate)}T00:00:00`);
+  const lastDay = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+  if (current.getDate() <= lastDay) {
+    return toDateString(new Date(target.getFullYear(), target.getMonth(), current.getDate()));
+  }
+  return toDateString(new Date(target.getFullYear(), target.getMonth(), 1));
+}
+
 export default function ClassDetailPage() {
   const { classId } = useParams<{ classId: string }>();
   const router = useRouter();
@@ -518,10 +549,25 @@ function ScheduleTab({ classId, events, tests, assignments, onChanged }: { class
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
   const firstDate = events[0]?.eventDate ?? tests[0]?.testDate ?? assignments.find((assignment) => assignment.dueAt)?.dueAt ?? "2026-05-25";
   const [selectedDate, setSelectedDate] = useState(dateOnly(firstDate));
+  const [displayMonth, setDisplayMonth] = useState(monthStart(firstDate));
   const visibleEvents = events.filter((event) => event.status !== "hidden");
   const selectedEvents = visibleEvents.filter((event) => dateOnly(event.eventDate) === selectedDate);
   const selectedTests = tests.filter((test) => test.status !== "hidden" && dateOnly(test.testDate) === selectedDate);
   const selectedAssignments = assignments.filter((assignment) => dateOnly(assignment.dueAt) === selectedDate);
+
+  function moveMonth(amount: number) {
+    setDisplayMonth((current) => {
+      const nextMonth = addMonths(current, amount);
+      setSelectedDate((currentSelectedDate) => selectedDateForMonth(nextMonth, currentSelectedDate));
+      return nextMonth;
+    });
+  }
+
+  function moveToday() {
+    const today = toDateString(new Date());
+    setDisplayMonth(monthStart(today));
+    setSelectedDate(today);
+  }
 
   async function remove(eventId: string) {
     await fetch(`/api/teacher/classes/${classId}/calendar-events/${eventId}`, { method: "DELETE" });
@@ -539,7 +585,17 @@ function ScheduleTab({ classId, events, tests, assignments, onChanged }: { class
       </div>
 
       <div className="mt-4 grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-        <ClassCalendarGrid events={visibleEvents} tests={tests} assignments={assignments} selectedDate={selectedDate} onSelectDate={setSelectedDate} anchorDate={firstDate} />
+        <ClassCalendarGrid
+          events={visibleEvents}
+          tests={tests}
+          assignments={assignments}
+          selectedDate={selectedDate}
+          onSelectDate={setSelectedDate}
+          displayMonth={displayMonth}
+          onPreviousMonth={() => moveMonth(-1)}
+          onNextMonth={() => moveMonth(1)}
+          onToday={moveToday}
+        />
         <div className="rounded-lg border border-line bg-slate-50 p-4">
           <h3 className="font-bold">{formatDate(selectedDate)} 일정</h3>
           <div className="mt-3 grid gap-3">
@@ -583,30 +639,79 @@ function ScheduleTab({ classId, events, tests, assignments, onChanged }: { class
   );
 }
 
-function ClassCalendarGrid({ events, tests, assignments, selectedDate, onSelectDate, anchorDate }: { events: CalendarEvent[]; tests: TestRow[]; assignments: AssignmentRow[]; selectedDate: string; onSelectDate: (date: string) => void; anchorDate: string }) {
-  const days = buildMonthDays(anchorDate);
+function ClassCalendarGrid({
+  events,
+  tests,
+  assignments,
+  selectedDate,
+  onSelectDate,
+  displayMonth,
+  onPreviousMonth,
+  onNextMonth,
+  onToday,
+}: {
+  events: CalendarEvent[];
+  tests: TestRow[];
+  assignments: AssignmentRow[];
+  selectedDate: string;
+  onSelectDate: (date: string) => void;
+  displayMonth: string;
+  onPreviousMonth: () => void;
+  onNextMonth: () => void;
+  onToday: () => void;
+}) {
+  const days = buildMonthDays(displayMonth);
   const eventsByDate = useMemo(() => {
-    const grouped = new Map<string, Array<{ type: string; id: string }>>();
+    const grouped = new Map<string, Array<{ type: string; id: string; label: string }>>();
     for (const event of events) {
       const key = dateOnly(event.eventDate);
-      grouped.set(key, [...(grouped.get(key) ?? []), { type: event.eventType, id: event.id }]);
+      grouped.set(key, [...(grouped.get(key) ?? []), { type: event.eventType, id: event.id, label: eventLabel(event.eventType) }]);
     }
     for (const test of tests) {
       const key = dateOnly(test.testDate);
-      grouped.set(key, [...(grouped.get(key) ?? []), { type: "test", id: test.id }]);
+      grouped.set(key, [...(grouped.get(key) ?? []), { type: "test", id: test.id, label: test.subject }]);
     }
     for (const assignment of assignments) {
       const key = dateOnly(assignment.dueAt);
-      if (key) grouped.set(key, [...(grouped.get(key) ?? []), { type: "assignment_due", id: assignment.id }]);
+      if (key) grouped.set(key, [...(grouped.get(key) ?? []), { type: "assignment_due", id: assignment.id, label: "숙제" }]);
     }
     return grouped;
   }, [events, tests, assignments]);
 
   return (
     <div className="rounded-lg border border-line bg-white p-4">
-      <div className="mb-3 flex items-center justify-between">
-        <h3 className="font-bold">{new Intl.DateTimeFormat("ko-KR", { year: "numeric", month: "long" }).format(new Date(`${dateOnly(anchorDate)}T00:00:00`))}</h3>
-        <Badge tone="blue">반 캘린더</Badge>
+      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onPreviousMonth}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-line bg-white text-sm font-bold text-slate-700 transition hover:bg-slate-50"
+            aria-label="이전달"
+          >
+            &lt;
+          </button>
+          <h3 className="min-w-28 text-center text-base font-extrabold text-ink">
+            {new Intl.DateTimeFormat("ko-KR", { year: "numeric", month: "long" }).format(new Date(`${dateOnly(displayMonth)}T00:00:00`))}
+          </h3>
+          <button
+            type="button"
+            onClick={onNextMonth}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-line bg-white text-sm font-bold text-slate-700 transition hover:bg-slate-50"
+            aria-label="다음달"
+          >
+            &gt;
+          </button>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onToday}
+            className="inline-flex min-h-8 items-center justify-center rounded-md border border-line bg-white px-3 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
+          >
+            오늘
+          </button>
+          <Badge tone="blue">반 캘린더</Badge>
+        </div>
       </div>
       <div className="grid grid-cols-7 gap-1 text-center text-xs font-bold text-slate-500">
         {["일", "월", "화", "수", "목", "금", "토"].map((day) => <span key={day}>{day}</span>)}
@@ -626,10 +731,24 @@ function ClassCalendarGrid({ events, tests, assignments, selectedDate, onSelectD
               {date && (
                 <>
                   <span className="font-bold">{Number(date.slice(-2))}</span>
-                  <div className="mt-1 flex flex-wrap gap-1">
-                    {markers.slice(0, 4).map((marker) => (
-                      <span key={`${marker.type}-${marker.id}`} className={cn("h-2 w-2 rounded-full", marker.type === "cancelled" && "bg-red-500", marker.type === "test" && "bg-yellow-500", marker.type === "assignment_due" && "bg-violet-500", marker.type === "makeup" && "bg-green-500", marker.type === "class" && "bg-blue-500", marker.type === "etc" && "bg-slate-400")} />
+                  <div className="mt-1 grid gap-1">
+                    {markers.slice(0, 2).map((marker) => (
+                      <span
+                        key={`${marker.type}-${marker.id}`}
+                        className={cn(
+                          "truncate rounded px-1.5 py-0.5 text-[10px] font-bold leading-4",
+                          marker.type === "cancelled" && "bg-red-50 text-red-700",
+                          marker.type === "test" && "bg-yellow-50 text-yellow-700",
+                          marker.type === "assignment_due" && "bg-violet-50 text-violet-700",
+                          marker.type === "makeup" && "bg-green-50 text-green-700",
+                          marker.type === "class" && "bg-blue-50 text-blue-700",
+                          marker.type === "etc" && "bg-slate-100 text-slate-600",
+                        )}
+                      >
+                        {marker.label}
+                      </span>
                     ))}
+                    {markers.length > 2 && <span className="text-[10px] font-bold text-slate-500">+{markers.length - 2}</span>}
                   </div>
                 </>
               )}
