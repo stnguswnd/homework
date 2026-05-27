@@ -65,6 +65,7 @@ export async function POST(request: Request) {
 
     const submissionId = target.submission_id ?? `submission-${randomUUID()}`;
     const targetStatus = target.due_at && target.due_at.getTime() < Date.now() ? "late" : "submitted";
+    const submissionStatus = "submitted";
 
     await client.query("begin");
     await client.query(
@@ -78,7 +79,7 @@ export async function POST(request: Request) {
           submitted_at = now(),
           updated_at = now()
       `,
-      [submissionId, assignmentId, session.studentId, target.target_id, targetStatus],
+      [submissionId, assignmentId, session.studentId, target.target_id, submissionStatus],
     );
 
     await client.query(

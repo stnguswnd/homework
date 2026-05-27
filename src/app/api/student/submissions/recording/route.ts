@@ -65,6 +65,7 @@ export async function POST(request: Request) {
 
     const submissionId = target.rows[0].submission_id ?? `submission-${randomUUID()}`;
     const targetStatus = target.rows[0].due_at && target.rows[0].due_at.getTime() < Date.now() ? "late" : "submitted";
+    const submissionStatus = "submitted";
     const fileName = safeFileName(file.name);
     const storagePath = `submissions/${submissionId}/${assignmentItemId}/${fileName}`;
     const bytes = Buffer.from(await file.arrayBuffer());
@@ -93,7 +94,7 @@ export async function POST(request: Request) {
           submitted_at = now(),
           updated_at = now()
       `,
-      [submissionId, assignmentId, session.studentId, target.rows[0].target_id, targetStatus],
+      [submissionId, assignmentId, session.studentId, target.rows[0].target_id, submissionStatus],
     );
 
     await client.query(

@@ -12,6 +12,7 @@ import { formatDateTime } from "@/lib/format";
 import type { TeacherSubmissionDetail } from "@/server/teacher/submissionDetail";
 
 type SubmissionDetail = TeacherSubmissionDetail;
+type ReviewStatus = "reviewed" | "returned";
 
 function statusLabel(status: string) {
   if (status === "reviewed" || status === "completed") return "완료";
@@ -26,34 +27,45 @@ function statusTone(status: string) {
   return "blue";
 }
 
+function reviewActionLabel(status: ReviewStatus) {
+  return status === "reviewed" ? "승인" : "반려";
+}
+
 export function SubmissionReviewPanel({ detail }: { detail: SubmissionDetail }) {
   const [comment, setComment] = useState(detail.teacherComment ?? "");
   const [status, setStatus] = useState(detail.status);
   const [reviewedAt, setReviewedAt] = useState(detail.reviewedAt);
   const [message, setMessage] = useState("");
-  const [pendingStatus, setPendingStatus] = useState<"reviewed" | "returned" | null>(null);
+  const [confirmStatus, setConfirmStatus] = useState<ReviewStatus | null>(null);
+  const [pendingStatus, setPendingStatus] = useState<ReviewStatus | null>(null);
   const [isPending, startTransition] = useTransition();
   const assignmentType = normalizeAssignmentType(detail.assignment?.assignmentType);
 
-  function review(nextStatus: "reviewed" | "returned") {
+  function review(nextStatus: ReviewStatus) {
     if (isPending) return;
     setPendingStatus(nextStatus);
+    setConfirmStatus(null);
     setMessage("");
     startTransition(async () => {
-      const response = await fetch(`/api/teacher/submissions/${detail.submissionId}/review`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: nextStatus, teacherComment: comment }),
-      });
-      const data = await response.json().catch(() => null);
-      setPendingStatus(null);
-      if (!response.ok) {
-        setMessage(data?.error ?? "검토 저장 중 오류가 발생했습니다.");
-        return;
+      try {
+        const response = await fetch(`/api/teacher/submissions/${detail.submissionId}/review`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: nextStatus, teacherComment: comment }),
+        });
+        const data = await response.json().catch(() => null);
+        if (!response.ok) {
+          setMessage(data?.error ?? "검토 저장 중 오류가 발생했습니다.");
+          return;
+        }
+        setStatus(nextStatus);
+        setReviewedAt(data?.reviewedAt ?? new Date().toISOString());
+        setMessage(nextStatus === "reviewed" ? "승인 피드백을 저장했습니다." : "반려 피드백을 저장했습니다.");
+      } catch {
+        setMessage("검토 저장 중 오류가 발생했습니다.");
+      } finally {
+        setPendingStatus(null);
       }
-      setStatus(nextStatus);
-      setReviewedAt(data?.reviewedAt ?? new Date().toISOString());
-      setMessage(nextStatus === "reviewed" ? "완료 피드백을 저장했습니다." : "반려 피드백을 저장했습니다.");
     });
   }
 
@@ -94,20 +106,37 @@ export function SubmissionReviewPanel({ detail }: { detail: SubmissionDetail }) 
         <div className="mt-4 flex flex-wrap justify-end gap-2">
           <Button
             variant={status === "returned" ? "danger" : "secondary"}
-            onClick={() => review("returned")}
+            onClick={() => setConfirmStatus("returned")}
             disabled={isPending}
           >
-            {pendingStatus === "returned" ? "반려 저장 중..." : status === "returned" ? "반려 처리됨" : "반려"}
+            {pendingStatus === "returned" ? "반려 저장 중..." : status === "returned" ? "반려됨" : "반려"}
           </Button>
           <Button
-            onClick={() => review("reviewed")}
+            onClick={() => setConfirmStatus("reviewed")}
             disabled={isPending}
             variant={status === "reviewed" ? "secondary" : "primary"}
           >
-            {pendingStatus === "reviewed" ? "승인 저장 중..." : status === "reviewed" ? "승인 처리됨" : "승인"}
+            {pendingStatus === "reviewed" ? "승인 저장 중..." : status === "reviewed" ? "승인됨" : "승인"}
           </Button>
         </div>
       </Card>
+
+      {confirmStatus && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 px-4">
+          <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-soft">
+            <h3 className="text-lg font-bold">{reviewActionLabel(confirmStatus)}하시겠습니까?</h3>
+            <p className="mt-3 text-sm leading-6 text-slate-600">
+              이 제출물을 {reviewActionLabel(confirmStatus)} 처리합니다. 이후에도 승인과 반려 상태는 다시 변경할 수 있습니다.
+            </p>
+            <div className="mt-6 flex justify-end gap-2">
+              <Button type="button" variant="secondary" onClick={() => setConfirmStatus(null)} disabled={isPending}>취소</Button>
+              <Button type="button" variant={confirmStatus === "returned" ? "danger" : "primary"} onClick={() => review(confirmStatus)} disabled={isPending}>
+                {pendingStatus === confirmStatus ? "저장 중..." : reviewActionLabel(confirmStatus)}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

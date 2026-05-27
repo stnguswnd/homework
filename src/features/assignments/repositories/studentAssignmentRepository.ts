@@ -168,7 +168,11 @@ export const studentAssignmentRepository = {
           a.id, a.teacher_id, a.class_id, a.title, a.description, a.assignment_type, cs.name as subject_name, a.image_url, a.image_storage_path,
           coalesce(at.due_at, a.due_at) as due_at,
           a.status,
-          coalesce(sub.status, at.status) as target_status,
+          case
+            when sub.status in ('reviewed', 'returned') then sub.status
+            when at.status in ('submitted', 'late') then at.status
+            else coalesce(sub.status, at.status)
+          end as target_status,
           coalesce(sub.submitted_at, at.submitted_at) as submitted_at,
           sub.id as submission_id,
           sub.status as submission_status,
