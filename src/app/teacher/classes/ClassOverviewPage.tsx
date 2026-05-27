@@ -205,6 +205,9 @@ function ClassStatusCard({
           <p className="mt-1 text-sm font-semibold text-slate-500">학생 {classItem.student_count}명</p>
           {classItem.class_status === "archived" && <Badge tone="gray">비활성</Badge>}
         </div>
+        <Button href={`/teacher/classes/${classItem.class_id}`} variant="secondary">
+          반 상세보기
+        </Button>
       </div>
 
       <div className="mt-4 grid grid-cols-3 gap-2 text-xs">
@@ -238,11 +241,6 @@ function ClassStatusCard({
         )}
       </div>
 
-      <div className="mt-5 border-t border-line pt-4">
-        <Button href={`/teacher/classes/${classItem.class_id}`} variant="secondary" className="w-full">
-          반 상세보기
-        </Button>
-      </div>
     </Card>
   );
 }

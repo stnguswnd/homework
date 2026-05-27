@@ -17,7 +17,7 @@ import { formatTimeRange } from "@/lib/calendarTypes";
 import { cn } from "@/lib/utils";
 
 type Tab = "overview" | "students" | "notices" | "homework" | "schedule" | "tests";
-type StudentRow = { id: string; name: string; studentLoginId: string; status: string };
+type StudentRow = { id: string; name: string; studentLoginId: string; status: string; classIds?: string[]; classNames?: string[] };
 type AssignmentRow = { id: string; title: string; assignmentType: string; classSubjectId?: string | null; subjectName?: string | null; dueAt: string | null; targetCount: number; submittedCount: number; missingCount: number; needsReviewCount: number };
 type Notice = { id: string; title: string; content: string; imageUrl: string | null; status: string; createdAt: string };
 type CalendarEvent = { id: string; eventType: string; title: string; description?: string | null; eventDate: string; startTime?: string | null; endTime?: string | null; status: string };
@@ -26,6 +26,26 @@ type TestResultRow = { studentId: string; studentName: string; score: number | n
 type ClassItem = { name: string; description?: string | null; status?: "active" | "archived" };
 type ClassSubject = { id: string; classId: string; name: string; description: string; status: string };
 type DeletePreview = { deleted: boolean; archived: boolean; reason: "no_history" | "has_history" };
+type HomeworkStatusItem = { assignmentId: string; title: string; subject: string; submissionId?: string };
+type AssignmentCatalogRow = {
+  id: string;
+  title: string;
+  description: string;
+  assignmentType: string;
+  assignmentSubjects?: string[];
+  targetCount: number;
+  updatedAt: string;
+};
+type ClassHomeworkOverview = {
+  class_id: string;
+  subjects: string[];
+  students: Array<{
+    studentId: string;
+    studentName: string;
+    reviewItems: HomeworkStatusItem[];
+    missingItems: HomeworkStatusItem[];
+  }>;
+};
 
 const tabs: Array<{ id: Tab; label: string }> = [
   { id: "overview", label: "개요" },
@@ -55,6 +75,10 @@ function eventTone(type: string): "blue" | "green" | "red" | "yellow" | "gray" {
 
 function dateOnly(value?: string | null) {
   return value ? value.slice(0, 10) : "";
+}
+
+function todayDate() {
+  return new Date().toISOString().slice(0, 10);
 }
 
 function formatDate(value?: string | null) {
@@ -116,15 +140,18 @@ export default function ClassDetailPage() {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [tests, setTests] = useState<TestRow[]>([]);
   const [subjects, setSubjects] = useState<ClassSubject[]>([]);
+  const [assignmentCatalog, setAssignmentCatalog] = useState<AssignmentCatalogRow[]>([]);
+  const [homeworkOverview, setHomeworkOverview] = useState<ClassHomeworkOverview | null>(null);
   const [message, setMessage] = useState("");
   const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isSubjectModalOpen, setIsSubjectModalOpen] = useState(false);
   const [isReactivateOpen, setIsReactivateOpen] = useState(false);
   const [deleteActionPreview, setDeleteActionPreview] = useState<DeletePreview | null>(null);
   const [deletePreview, setDeletePreview] = useState<DeletePreview | null>(null);
   const [isDeletePending, startDeleteTransition] = useTransition();
 
   async function loadAll() {
-    const [classData, studentData, assignmentData, noticeData, eventData, testData, subjectData] = await Promise.all([
+    const [classData, studentData, assignmentData, noticeData, eventData, testData, subjectData, assignmentCatalogData, activeOverviewData, archivedOverviewData] = await Promise.all([
       fetch(`/api/teacher/classes/${classId}`).then((response) => response.json()),
       fetch(`/api/teacher/classes/${classId}/students`).then((response) => response.json()),
       fetch(`/api/teacher/classes/${classId}/assignments`).then((response) => response.json()),
@@ -132,6 +159,9 @@ export default function ClassDetailPage() {
       fetch(`/api/teacher/classes/${classId}/calendar-events`).then((response) => response.json()).catch(() => ({ events: [] })),
       fetch(`/api/teacher/tests?classId=${classId}`).then((response) => response.json()).catch(() => ({ tests: [] })),
       fetch(`/api/teacher/classes/${classId}/subjects`).then((response) => response.json()).catch(() => ({ subjects: [] })),
+      fetch("/api/teacher/assignments").then((response) => response.json()).catch(() => ({ assignments: [] })),
+      fetch("/api/teacher/classes/overview?status=active").then((response) => response.json()).catch(() => ({ classes: [] })),
+      fetch("/api/teacher/classes/overview?status=archived").then((response) => response.json()).catch(() => ({ classes: [] })),
     ]);
     setClassItem(classData.class ?? null);
     setStudents(studentData.students ?? []);
@@ -140,6 +170,10 @@ export default function ClassDetailPage() {
     setEvents(eventData.events ?? []);
     setTests(testData.tests ?? []);
     setSubjects(subjectData.subjects ?? []);
+    setAssignmentCatalog(assignmentCatalogData.assignments ?? []);
+    setHomeworkOverview(
+      [...(activeOverviewData.classes ?? []), ...(archivedOverviewData.classes ?? [])].find((item: ClassHomeworkOverview) => item.class_id === classId) ?? null,
+    );
   }
 
   async function loadDeletePreview() {
@@ -243,6 +277,7 @@ export default function ClassDetailPage() {
             </div>
             <div className="flex flex-wrap gap-2">
               <Button variant="secondary" onClick={() => setIsEditOpen(true)}>반 수정하기</Button>
+              <Button type="button" variant="secondary" onClick={() => setIsSubjectModalOpen(true)}>과목 관리</Button>
               {classItem?.status === "archived" ? (
                 <Button onClick={() => setIsReactivateOpen(true)}>반 재활성화</Button>
               ) : (
@@ -271,12 +306,20 @@ export default function ClassDetailPage() {
           </div>
         </div>
 
-        {activeTab === "overview" && <OverviewTab notices={notices} subjects={subjects} assignments={assignments} events={events} tests={tests} />}
-        {activeTab === "students" && <StudentsTab students={students} />}
+        {activeTab === "overview" && <OverviewTab classId={classId} notices={notices} subjects={subjects} homeworkOverview={homeworkOverview} assignments={assignments} assignmentCatalog={assignmentCatalog} students={students} events={events} tests={tests} onChanged={refresh} />}
+        {activeTab === "students" && <StudentsTab classId={classId} students={students} onChanged={refresh} />}
         {activeTab === "notices" && <NoticesTab classId={classId} notices={notices} onChanged={refresh} />}
-        {activeTab === "homework" && <HomeworkTab classId={classId} subjects={subjects} assignments={assignments} onChanged={refresh} />}
+        {activeTab === "homework" && <HomeworkTab subjects={subjects} assignments={assignments} />}
         {activeTab === "schedule" && <ScheduleTab classId={classId} events={events} tests={tests} assignments={assignments} onChanged={refresh} />}
         {activeTab === "tests" && <TestsTab classId={classId} students={students} tests={tests} onChanged={refresh} />}
+        {isSubjectModalOpen && (
+          <SubjectManagementModal
+            classId={classId}
+            subjects={subjects}
+            onClose={() => setIsSubjectModalOpen(false)}
+            onChanged={refresh}
+          />
+        )}
         {isEditOpen && classItem && (
           <ClassEditModal
             classItem={classItem}
@@ -378,28 +421,573 @@ function ClassReactivateModal({
   );
 }
 
-function OverviewTab({ notices, subjects, assignments, events, tests }: { notices: Notice[]; subjects: ClassSubject[]; assignments: AssignmentRow[]; events: CalendarEvent[]; tests: TestRow[] }) {
-  const subjectSummaries = subjects.map((subject) => {
-    const items = assignments.filter((assignment) => assignment.classSubjectId === subject.id);
-    return {
-      id: subject.id,
-      name: subject.name,
-      assignments: items,
-      targetCount: items.reduce((sum, item) => sum + item.targetCount, 0),
-      submittedCount: items.reduce((sum, item) => sum + item.submittedCount, 0),
-      missingCount: items.reduce((sum, item) => sum + item.missingCount, 0),
-      needsReviewCount: items.reduce((sum, item) => sum + item.needsReviewCount, 0),
-    };
-  });
+function OverviewTab({
+  classId,
+  notices,
+  subjects,
+  homeworkOverview,
+  assignments,
+  assignmentCatalog,
+  students,
+  events,
+  tests,
+  onChanged,
+}: {
+  classId: string;
+  notices: Notice[];
+  subjects: ClassSubject[];
+  homeworkOverview: ClassHomeworkOverview | null;
+  assignments: AssignmentRow[];
+  assignmentCatalog: AssignmentCatalogRow[];
+  students: StudentRow[];
+  events: CalendarEvent[];
+  tests: TestRow[];
+  onChanged: (msg: string) => void;
+}) {
+  const [isScheduleOpen, setIsScheduleOpen] = useState(false);
+  const [isNoticeOpen, setIsNoticeOpen] = useState(false);
+  const [assignSubject, setAssignSubject] = useState<ClassSubject | null>(null);
+  const firstDate = events[0]?.eventDate ?? tests[0]?.testDate ?? assignments.find((assignment) => assignment.dueAt)?.dueAt ?? "2026-05-25";
+  const [selectedDate, setSelectedDate] = useState(dateOnly(firstDate));
+  const [displayMonth, setDisplayMonth] = useState(monthStart(firstDate));
+  const visibleEvents = events.filter((event) => event.status !== "hidden");
+  const upcomingTests = tests
+    .filter((test) => test.status !== "hidden")
+    .sort((left, right) => dateOnly(left.testDate).localeCompare(dateOnly(right.testDate)));
+  const subjectNames = Array.from(new Set([
+    ...subjects.map((subject) => subject.name),
+    ...(homeworkOverview?.subjects ?? []),
+    ...assignments.map((assignment) => assignment.subjectName ?? "").filter(Boolean),
+  ]));
   const ungroupedAssignments = assignments.filter((assignment) => !assignment.classSubjectId);
+  if (ungroupedAssignments.length > 0 && !subjectNames.includes("과목 없음")) subjectNames.push("과목 없음");
+
+  function moveMonth(amount: number) {
+    setDisplayMonth((current) => {
+      const nextMonth = addMonths(current, amount);
+      setSelectedDate((currentSelectedDate) => selectedDateForMonth(nextMonth, currentSelectedDate));
+      return nextMonth;
+    });
+  }
+
+  function moveToday() {
+    const today = toDateString(new Date());
+    setDisplayMonth(monthStart(today));
+    setSelectedDate(today);
+  }
 
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
-      <SummaryCard title="이번주 수업/일정" empty="등록된 일정이 없습니다." items={events.slice(0, 4).map((event) => ({ id: event.id, title: event.title, meta: `${formatDate(event.eventDate)} · ${eventLabel(event.eventType)}` }))} />
-      <SummaryCard title="최근 반 공지사항" empty="이 반에 등록된 공지사항이 없습니다." items={notices.slice(0, 4).map((notice) => ({ id: notice.id, title: notice.title, meta: notice.status }))} />
-      <SubjectHomeworkSummary subjects={subjectSummaries} ungroupedAssignments={ungroupedAssignments} />
-      <SummaryCard title="예정된 테스트" empty="등록된 테스트가 없습니다." items={tests.slice(0, 4).map((test) => ({ id: test.id, title: test.title, meta: `${test.subject} · ${formatDate(test.testDate)} · ${formatTimeRange(test.startTime, test.endTime)}` }))} />
+    <div className="grid gap-5">
+      <ClassNoticeOverview notices={notices} onCreate={() => setIsNoticeOpen(true)} />
+      <SubjectStudentHomeworkOverview
+        classId={classId}
+        subjectNames={subjectNames}
+        subjects={subjects}
+        assignments={assignments}
+        assignmentCatalog={assignmentCatalog}
+        students={students}
+        homeworkOverview={homeworkOverview}
+        onAssignSubject={setAssignSubject}
+      />
+      <div className="grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
+        <div className="grid gap-0">
+          <ClassCalendarGrid
+            events={visibleEvents}
+            tests={tests}
+            assignments={assignments}
+            selectedDate={selectedDate}
+            onSelectDate={setSelectedDate}
+            displayMonth={displayMonth}
+            onPreviousMonth={() => moveMonth(-1)}
+            onNextMonth={() => moveMonth(1)}
+            onToday={moveToday}
+            action={<Button onClick={() => setIsScheduleOpen(true)}>일정 추가</Button>}
+          />
+          <ClassSelectedDateSchedule
+            selectedDate={selectedDate}
+            events={visibleEvents}
+            tests={tests}
+            assignments={assignments}
+          />
+        </div>
+        <ClassTestOverview tests={upcomingTests} />
+      </div>
+      {isScheduleOpen && (
+        <ClassScheduleForm
+          classId={classId}
+          event={null}
+          onClose={() => setIsScheduleOpen(false)}
+          onSaved={(message) => {
+            setIsScheduleOpen(false);
+            onChanged(message ?? "일정을 저장했습니다.");
+          }}
+        />
+      )}
+      {isNoticeOpen && (
+        <NoticeModal
+          classId={classId}
+          notice={null}
+          onClose={() => setIsNoticeOpen(false)}
+          onSaved={() => {
+            setIsNoticeOpen(false);
+            onChanged("반 공지사항을 저장했습니다.");
+          }}
+        />
+      )}
+      {assignSubject && (
+        <SubjectAssignmentModal
+          classId={classId}
+          subject={assignSubject}
+          assignments={assignmentCatalog}
+          students={students}
+          onClose={() => setAssignSubject(null)}
+          onAssigned={(assignedCount) => {
+            setAssignSubject(null);
+            onChanged(`과제를 배정했습니다. 대상 ${assignedCount}건`);
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+function ClassNoticeOverview({ notices, onCreate }: { notices: Notice[]; onCreate: () => void }) {
+  const visibleNotices = notices.slice(0, 5);
+  return (
+    <Card>
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="font-bold">공지사항</h2>
+        <div className="flex items-center gap-2">
+          <Badge tone="blue">{visibleNotices.length}개</Badge>
+          <Button type="button" onClick={onCreate}>반 공지 작성</Button>
+        </div>
+      </div>
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
+        {visibleNotices.length ? (
+          visibleNotices.map((notice) => (
+            <article key={notice.id} className="rounded-md border border-line bg-slate-50 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h3 className="truncate font-bold">{notice.title}</h3>
+                  <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-600">{notice.content}</p>
+                </div>
+                <Badge tone={notice.status === "published" ? "green" : "gray"}>{notice.status}</Badge>
+              </div>
+            </article>
+          ))
+        ) : (
+          <p className="rounded-md border border-dashed border-line p-4 text-center text-sm text-slate-500 md:col-span-2">등록된 공지사항이 없습니다.</p>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+function SubjectStudentHomeworkOverview({
+  classId,
+  subjectNames,
+  subjects,
+  assignments,
+  assignmentCatalog,
+  students,
+  homeworkOverview,
+  onAssignSubject,
+}: {
+  classId: string;
+  subjectNames: string[];
+  subjects: ClassSubject[];
+  assignments: AssignmentRow[];
+  assignmentCatalog: AssignmentCatalogRow[];
+  students: StudentRow[];
+  homeworkOverview: ClassHomeworkOverview | null;
+  onAssignSubject: (subject: ClassSubject) => void;
+}) {
+  return (
+    <Card>
+      <h2 className="font-bold">과목별 학생 숙제 현황</h2>
+      <div className="mt-4 grid gap-4 xl:grid-cols-2">
+        {subjectNames.length ? (
+          subjectNames.map((subjectName) => (
+            <SubjectStudentStatusCard
+              key={subjectName}
+              subjectName={subjectName}
+              classId={classId}
+              subjects={subjects}
+              assignments={assignments}
+              assignmentCatalog={assignmentCatalog}
+              allStudents={students}
+              students={homeworkOverview?.students ?? []}
+              onAssignSubject={onAssignSubject}
+            />
+          ))
+        ) : (
+          <p className="rounded-md border border-dashed border-line p-4 text-center text-sm text-slate-500 xl:col-span-2">등록된 과목이나 숙제가 없습니다.</p>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+function SubjectStudentStatusCard({
+  subjectName,
+  classId,
+  subjects,
+  assignments,
+  assignmentCatalog,
+  allStudents,
+  students,
+  onAssignSubject,
+}: {
+  subjectName: string;
+  classId: string;
+  subjects: ClassSubject[];
+  assignments: AssignmentRow[];
+  assignmentCatalog: AssignmentCatalogRow[];
+  allStudents: StudentRow[];
+  students: ClassHomeworkOverview["students"];
+  onAssignSubject: (subject: ClassSubject) => void;
+}) {
+  const subjectIds = subjects.filter((subject) => subject.name === subjectName).map((subject) => subject.id);
+  const subject = subjects.find((item) => item.name === subjectName);
+  const subjectAssignments = subjectName === "과목 없음"
+    ? assignments.filter((assignment) => !assignment.classSubjectId)
+    : assignments.filter((assignment) => subjectIds.includes(assignment.classSubjectId ?? "") || assignment.subjectName === subjectName);
+  const displayStudents = students.length > 0
+    ? students
+    : allStudents.map((student) => ({ studentId: student.id, studentName: student.name, reviewItems: [], missingItems: [] }));
+  const assignableCount = assignmentCatalog.length;
+
+  const totals = subjectAssignments.reduce(
+    (sum, assignment) => ({
+      targetCount: sum.targetCount + assignment.targetCount,
+      missingCount: sum.missingCount + assignment.missingCount,
+      needsReviewCount: sum.needsReviewCount + assignment.needsReviewCount,
+    }),
+    { targetCount: 0, missingCount: 0, needsReviewCount: 0 },
+  );
+
+  return (
+    <section className="rounded-md border border-line p-4">
+      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+        <h3 className="min-w-0 font-bold leading-9">{subjectName}</h3>
+        <div className="flex flex-wrap items-center justify-start gap-2 sm:justify-end">
+          <Badge>숙제 {subjectAssignments.length}</Badge>
+          <Badge tone="red">미제출 {totals.missingCount}</Badge>
+          <Badge tone="yellow">검토 {totals.needsReviewCount}</Badge>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => subject && onAssignSubject(subject)}
+            disabled={!subject || assignableCount === 0}
+          >
+            과제 배정
+          </Button>
+        </div>
+      </div>
+      <div className="mt-3 grid gap-2">
+        {displayStudents.length ? (
+          displayStudents.map((student) => {
+            const missingItems = student.missingItems.filter((item) => item.subject === subjectName);
+            const reviewItems = student.reviewItems.filter((item) => item.subject === subjectName);
+            return (
+              <SubjectStudentHomeworkCard
+                key={`${subjectName}-${student.studentId}`}
+                studentId={student.studentId}
+                studentName={student.studentName}
+                reviewItems={reviewItems}
+                missingItems={missingItems}
+              />
+            );
+          })
+        ) : (
+          <p className="rounded-md border border-dashed border-line p-4 text-center text-sm text-slate-500">등록된 학생이 없습니다.</p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function SubjectStudentHomeworkCard({
+  studentId,
+  studentName,
+  reviewItems,
+  missingItems,
+}: {
+  studentId: string;
+  studentName: string;
+  reviewItems: HomeworkStatusItem[];
+  missingItems: HomeworkStatusItem[];
+}) {
+  return (
+    <Link
+      href={`/teacher/students/${studentId}`}
+      className="block rounded-md border border-line bg-slate-50 p-4 transition hover:border-action hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-action/30"
+    >
+      <p className="text-lg font-bold text-ink">{studentName}</p>
+      <SubjectStatusRow label="검토 필요" tone="review" items={reviewItems} emptyLabel="없음" />
+      <div className="my-2 border-t border-line" />
+      <SubjectStatusRow label="미완료" tone="missing" items={missingItems} emptyLabel="없음" />
+    </Link>
+  );
+}
+
+function SubjectStatusRow({
+  label,
+  tone,
+  items,
+  emptyLabel,
+}: {
+  label: string;
+  tone: "review" | "missing";
+  items: HomeworkStatusItem[];
+  emptyLabel: string;
+}) {
+  return (
+    <div className="mt-3 grid grid-cols-[76px_1fr] items-center gap-3 text-sm">
+      <p className={tone === "review" ? "font-bold text-action" : "font-bold text-red-700"}>{label}</p>
+      <div className="flex min-w-0 flex-wrap gap-2">
+        {items.length === 0 ? (
+          <span className="text-slate-400">{emptyLabel}</span>
+        ) : (
+          items.map((item) => <SubjectHomeworkPill key={`${label}-${item.assignmentId}`} item={item} tone={tone} />)
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SubjectHomeworkPill({ item, tone }: { item: HomeworkStatusItem; tone: "review" | "missing" }) {
+  const classes =
+    tone === "review"
+      ? "inline-flex max-w-full min-w-0 items-center gap-2 rounded-full bg-blue-50 px-3 py-1.5 text-sm font-bold text-action"
+      : "inline-flex max-w-full min-w-0 items-center gap-2 rounded-full bg-red-50 px-3 py-1.5 text-sm font-bold text-red-700";
+
+  return (
+    <span className={classes}>
+      <span className="shrink-0 rounded-full bg-white px-2 py-0.5 text-xs font-bold">{item.subject}</span>
+      <span className="min-w-0 truncate">{item.title}</span>
+    </span>
+  );
+}
+
+function SubjectAssignmentModal({
+  classId,
+  subject,
+  assignments,
+  students,
+  onClose,
+  onAssigned,
+}: {
+  classId: string;
+  subject: ClassSubject;
+  assignments: AssignmentCatalogRow[];
+  students: StudentRow[];
+  onClose: () => void;
+  onAssigned: (assignedCount: number) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [selectedAssignmentId, setSelectedAssignmentId] = useState("");
+  const [dueDate, setDueDate] = useState(todayDate());
+  const [dueTime, setDueTime] = useState("23:59");
+  const [visibility, setVisibility] = useState<"published" | "draft">("published");
+  const [targetType, setTargetType] = useState<"all" | "partial">("all");
+  const [studentIds, setStudentIds] = useState<string[]>([]);
+  const [studentSearch, setStudentSearch] = useState("");
+  const [error, setError] = useState("");
+  const [isPending, startTransition] = useTransition();
+
+  const filteredAssignments = useMemo(() => {
+    const keyword = query.trim().toLowerCase();
+    return assignments
+      .filter((assignment) => {
+        const matchesQuery = !keyword
+          || assignment.title.toLowerCase().includes(keyword)
+          || assignment.description.toLowerCase().includes(keyword);
+        return matchesQuery;
+      })
+      .slice(0, 20);
+  }, [assignments, query]);
+
+  const filteredStudents = useMemo(() => {
+    const keyword = studentSearch.trim().toLowerCase();
+    return students.filter((student) => !keyword || student.name.toLowerCase().includes(keyword));
+  }, [studentSearch, students]);
+
+  function toggleStudent(studentId: string) {
+    setStudentIds((current) => current.includes(studentId) ? current.filter((id) => id !== studentId) : [...current, studentId]);
+  }
+
+  function assignHomework() {
+    if (!selectedAssignmentId) {
+      setError("배정할 과제를 선택해주세요.");
+      return;
+    }
+    if (!dueDate || !dueTime) {
+      setError("마감일과 마감 시간을 입력해주세요.");
+      return;
+    }
+    if (targetType === "partial" && studentIds.length === 0) {
+      setError("일부 학생만 배정하려면 학생을 1명 이상 선택해주세요.");
+      return;
+    }
+    setError("");
+    startTransition(async () => {
+      const response = await fetch("/api/teacher/assignments/bulk-assign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          assignmentIds: [selectedAssignmentId],
+          targets: [{
+            classId,
+            classSubjectId: subject.id,
+            dueDate,
+            dueTime,
+            visibility,
+            targetType,
+            studentIds,
+          }],
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setError(data.error ?? "과제 배정 중 오류가 발생했습니다.");
+        return;
+      }
+      onAssigned(data.assignedCount ?? 0);
+    });
+  }
+
+  return (
+    <Modal title={`${subject.name} 과제 배정`} onClose={onClose}>
+      <div className="grid gap-5">
+        {error && <p className="rounded-md bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{error}</p>}
+
+        <div className="grid gap-3 rounded-md border border-line bg-slate-50 p-4">
+          <div className="grid gap-3 md:grid-cols-2">
+            <div>
+              <p className="text-xs font-semibold text-slate-500">반</p>
+              <p className="mt-1 font-bold">현재 반</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-slate-500">과목</p>
+              <p className="mt-1 font-bold">{subject.name}</p>
+            </div>
+          </div>
+        </div>
+
+        <section className="grid gap-3">
+          <label className="grid gap-2 text-sm font-semibold">
+            기존 과제 찾기
+            <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="과제명 검색" />
+          </label>
+          <div className="grid max-h-72 gap-2 overflow-auto rounded-md border border-line p-2">
+            {filteredAssignments.length ? (
+              filteredAssignments.map((assignment) => (
+                <label
+                  key={assignment.id}
+                  className={cn(
+                    "flex cursor-pointer items-start gap-3 rounded-md border border-line bg-white p-3 transition hover:border-action",
+                    selectedAssignmentId === assignment.id && "border-action bg-blue-50 ring-1 ring-action",
+                  )}
+                >
+                  <input
+                    type="radio"
+                    className="mt-1"
+                    checked={selectedAssignmentId === assignment.id}
+                    onChange={() => setSelectedAssignmentId(assignment.id)}
+                  />
+                  <span className="min-w-0">
+                    <span className="block truncate font-bold">{assignment.title}</span>
+                    <span className="mt-1 line-clamp-2 text-sm text-slate-500">{assignment.description || "설명 없음"}</span>
+                    <span className="mt-2 flex flex-wrap gap-2">
+                      <Badge>{assignment.assignmentType}</Badge>
+                      <Badge tone={assignment.targetCount > 0 ? "green" : "gray"}>{assignment.targetCount > 0 ? "배정됨" : "미배정"}</Badge>
+                    </span>
+                  </span>
+                </label>
+              ))
+            ) : (
+              <p className="rounded-md border border-dashed border-line p-4 text-center text-sm text-slate-500">찾을 수 있는 과제가 없습니다.</p>
+            )}
+          </div>
+        </section>
+
+        <section className="grid gap-3 rounded-md border border-line p-4">
+          <div className="grid gap-3 md:grid-cols-3">
+            <label className="grid gap-2 text-sm font-semibold">마감일<Input type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} /></label>
+            <label className="grid gap-2 text-sm font-semibold">마감 시간<Input type="time" value={dueTime} onChange={(event) => setDueTime(event.target.value)} /></label>
+            <label className="grid gap-2 text-sm font-semibold">
+              공개 상태
+              <Select value={visibility} onChange={(event) => setVisibility(event.target.value as "published" | "draft")}>
+                <option value="published">게시</option>
+                <option value="draft">비공개</option>
+              </Select>
+            </label>
+          </div>
+          <fieldset className="grid gap-2">
+            <legend className="text-sm font-semibold">대상 학생</legend>
+            <div className="flex flex-wrap gap-4 text-sm font-semibold">
+              <label className="flex items-center gap-2"><input type="radio" checked={targetType === "all"} onChange={() => { setTargetType("all"); setStudentIds([]); }} />반 전체</label>
+              <label className="flex items-center gap-2"><input type="radio" checked={targetType === "partial"} onChange={() => setTargetType("partial")} />일부 학생만</label>
+            </div>
+          </fieldset>
+          {targetType === "partial" && (
+            <div className="grid gap-3 rounded-md bg-slate-50 p-3">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                <label className="grid flex-1 gap-2 text-sm font-semibold">
+                  학생 검색
+                  <Input value={studentSearch} onChange={(event) => setStudentSearch(event.target.value)} placeholder="학생 이름 검색" />
+                </label>
+                <p className="text-sm font-semibold text-slate-600">선택 {studentIds.length}명</p>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {filteredStudents.map((student) => (
+                  <label key={student.id} className="flex items-center gap-2 rounded-md border border-line bg-white p-2 text-sm font-semibold">
+                    <input type="checkbox" checked={studentIds.includes(student.id)} onChange={() => toggleStudent(student.id)} />
+                    {student.name}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
+
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={onClose}>취소</Button>
+          <Button type="button" onClick={assignHomework} disabled={isPending}>{isPending ? "배정 중..." : "배정하기"}</Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function ClassTestOverview({ tests }: { tests: TestRow[] }) {
+  return (
+    <Card className="h-full">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="font-bold">시험</h2>
+        <Badge tone="yellow">{tests.length}개</Badge>
+      </div>
+      <div className="mt-4 grid gap-3">
+        {tests.length ? (
+          tests.slice(0, 8).map((test) => (
+            <article key={test.id} className="rounded-md border border-line bg-slate-50 p-4">
+              <Badge tone="blue">{test.subject}</Badge>
+              <h3 className="mt-2 font-bold">{test.title}</h3>
+              <p className="mt-1 text-sm text-slate-500">{formatDate(test.testDate)} · {formatTimeRange(test.startTime, test.endTime)}</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Badge>결과 {test.resultCount}</Badge>
+                <Badge tone="green">PASS {test.passCount}</Badge>
+                <Badge tone="red">NonPASS {test.nonpassCount}</Badge>
+              </div>
+              {test.scope && <p className="mt-2 text-sm text-slate-600">범위: {test.scope}</p>}
+            </article>
+          ))
+        ) : (
+          <p className="rounded-md border border-dashed border-line p-4 text-center text-sm text-slate-500">등록된 시험이 없습니다.</p>
+        )}
+      </div>
+    </Card>
   );
 }
 
@@ -480,10 +1068,15 @@ function ListLine({ title, meta }: { title: string; meta: string }) {
   );
 }
 
-function StudentsTab({ students }: { students: StudentRow[] }) {
+function StudentsTab({ classId, students, onChanged }: { classId: string; students: StudentRow[]; onChanged: (msg: string) => void }) {
+  const [isAddOpen, setIsAddOpen] = useState(false);
+
   return (
     <Card>
-      <h2 className="font-bold">학생 목록</h2>
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="font-bold">학생 목록</h2>
+        <Button type="button" onClick={() => setIsAddOpen(true)}>학생 추가</Button>
+      </div>
       <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {students.length ? (
           students.map((student) => (
@@ -501,17 +1094,189 @@ function StudentsTab({ students }: { students: StudentRow[] }) {
           <p className="text-sm text-slate-500">이 반에 등록된 학생이 없습니다.</p>
         )}
       </div>
+      {isAddOpen && (
+        <AddExistingStudentsModal
+          classId={classId}
+          currentStudentIds={students.map((student) => student.id)}
+          onClose={() => setIsAddOpen(false)}
+          onAdded={(addedCount) => {
+            setIsAddOpen(false);
+            onChanged(`학생 ${addedCount}명을 반에 추가했습니다.`);
+          }}
+        />
+      )}
     </Card>
   );
 }
 
-function HomeworkTab({ classId, subjects, assignments, onChanged }: { classId: string; subjects: ClassSubject[]; assignments: AssignmentRow[]; onChanged: (msg: string) => void }) {
+function AddExistingStudentsModal({
+  classId,
+  currentStudentIds,
+  onClose,
+  onAdded,
+}: {
+  classId: string;
+  currentStudentIds: string[];
+  onClose: () => void;
+  onAdded: (addedCount: number) => void;
+}) {
+  const [students, setStudents] = useState<StudentRow[]>([]);
+  const [query, setQuery] = useState("");
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [error, setError] = useState("");
+  const [isPending, startTransition] = useTransition();
+
+  useEffect(() => {
+    fetch("/api/teacher/students", { cache: "no-store" })
+      .then((response) => response.json())
+      .then((data: StudentRow[]) => setStudents(data.filter((student) => student.status === "active" && !currentStudentIds.includes(student.id))))
+      .catch(() => setStudents([]));
+  }, [currentStudentIds]);
+
+  const filteredStudents = useMemo(() => {
+    const keyword = query.trim().toLowerCase();
+    return students.filter((student) => (
+      !keyword
+      || student.name.toLowerCase().includes(keyword)
+      || student.studentLoginId.toLowerCase().includes(keyword)
+    ));
+  }, [query, students]);
+
+  function toggleStudent(studentId: string) {
+    setSelectedIds((current) => current.includes(studentId) ? current.filter((id) => id !== studentId) : [...current, studentId]);
+  }
+
+  function addStudents() {
+    if (selectedIds.length === 0) {
+      setError("추가할 학생을 선택해주세요.");
+      return;
+    }
+    setError("");
+    startTransition(async () => {
+      const response = await fetch(`/api/teacher/classes/${classId}/students`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ studentIds: selectedIds }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setError(data.error ?? "학생을 추가하지 못했습니다.");
+        return;
+      }
+      onAdded(data.addedCount ?? selectedIds.length);
+    });
+  }
+
+  return (
+    <Modal title="기존 학생 추가" onClose={onClose}>
+      <div className="grid gap-4">
+        {error && <p className="rounded-md bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{error}</p>}
+        <label className="grid gap-2 text-sm font-semibold">
+          학생 검색
+          <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="학생 이름 또는 아이디 검색" />
+        </label>
+        <div className="grid max-h-[55vh] gap-2 overflow-auto rounded-md border border-line p-2 sm:grid-cols-2">
+          {filteredStudents.length ? (
+            filteredStudents.map((student) => (
+              <label key={student.id} className="flex cursor-pointer items-start gap-3 rounded-md border border-line bg-white p-3 text-sm transition hover:border-action">
+                <input type="checkbox" className="mt-1" checked={selectedIds.includes(student.id)} onChange={() => toggleStudent(student.id)} />
+                <span>
+                  <span className="block font-bold">{student.name}</span>
+                  <span className="text-slate-500">{student.studentLoginId}</span>
+                  {student.classNames && student.classNames.length > 0 && (
+                    <span className="mt-1 block text-xs font-semibold text-slate-400">{student.classNames.join(", ")}</span>
+                  )}
+                </span>
+              </label>
+            ))
+          ) : (
+            <p className="rounded-md border border-dashed border-line p-4 text-center text-sm text-slate-500 sm:col-span-2">추가할 수 있는 기존 학생이 없습니다.</p>
+          )}
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={onClose}>취소</Button>
+          <Button type="button" onClick={addStudents} disabled={isPending || selectedIds.length === 0}>
+            {isPending ? "추가 중..." : `선택 학생 추가 (${selectedIds.length})`}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function HomeworkTab({ subjects, assignments }: { subjects: ClassSubject[]; assignments: AssignmentRow[] }) {
   const [selectedSubjectId, setSelectedSubjectId] = useState("all");
+  const filteredAssignments = selectedSubjectId === "all" ? assignments : assignments.filter((assignment) => assignment.classSubjectId === selectedSubjectId);
+
+  useEffect(() => {
+    if (selectedSubjectId !== "all" && !subjects.some((subject) => subject.id === selectedSubjectId)) {
+      setSelectedSubjectId("all");
+    }
+  }, [selectedSubjectId, subjects]);
+
+  return (
+    <Card>
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <h2 className="font-bold">숙제 관리</h2>
+      </div>
+      <div className="mt-4 rounded-md border border-line bg-slate-50 p-3">
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant={selectedSubjectId === "all" ? "primary" : "secondary"} onClick={() => setSelectedSubjectId("all")}>전체</Button>
+          {subjects.map((subject) => (
+            <Button key={subject.id} type="button" variant={selectedSubjectId === subject.id ? "primary" : "secondary"} onClick={() => setSelectedSubjectId(subject.id)}>
+              {subject.name}
+            </Button>
+          ))}
+        </div>
+      </div>
+      <div className="mt-3 grid gap-3">
+        {filteredAssignments.length ? (
+          filteredAssignments.map((assignment) => (
+            <div key={assignment.id} className="rounded-md border border-line p-4">
+              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <h3 className="font-bold">{assignment.title}</h3>
+                  <p className="text-sm text-slate-500">마감 {assignment.dueAt ? formatDate(assignment.dueAt) : "-"}</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Badge>대상 {assignment.targetCount}</Badge>
+                    <Badge tone="green">제출 {assignment.submittedCount}</Badge>
+                    <Badge tone="red">미제출 {assignment.missingCount}</Badge>
+                    <Badge tone="yellow">검토 {assignment.needsReviewCount}</Badge>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button href={`/teacher/assignments/${assignment.id}/targets`} variant="secondary">
+                    배정 관리
+                  </Button>
+                  <Button href={`/teacher/assignments/new?assignmentId=${assignment.id}`} variant="secondary">
+                    수정
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ))
+        ) : (
+          <p className="rounded-md border border-dashed border-line p-4 text-center text-sm text-slate-500">등록된 숙제가 없습니다.</p>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+function SubjectManagementModal({
+  classId,
+  subjects,
+  onClose,
+  onChanged,
+}: {
+  classId: string;
+  subjects: ClassSubject[];
+  onClose: () => void;
+  onChanged: (msg: string) => void;
+}) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [isSubjectModalOpen, setIsSubjectModalOpen] = useState(false);
   const [subjectDrafts, setSubjectDrafts] = useState<Record<string, { name: string; description: string }>>({});
-  const filteredAssignments = selectedSubjectId === "all" ? assignments : assignments.filter((assignment) => assignment.classSubjectId === selectedSubjectId);
 
   function draftFor(subject: ClassSubject) {
     return subjectDrafts[subject.id] ?? { name: subject.name, description: subject.description ?? "" };
@@ -563,107 +1328,56 @@ function HomeworkTab({ classId, subjects, assignments, onChanged }: { classId: s
   async function archiveSubject(subjectId: string) {
     const response = await fetch(`/api/teacher/classes/${classId}/subjects/${subjectId}`, { method: "DELETE" });
     const data = await response.json().catch(() => ({}));
-    if (response.ok && selectedSubjectId === subjectId) {
-      setSelectedSubjectId("all");
-    }
     onChanged(response.ok ? "과목을 삭제했습니다." : data.error ?? "과목을 삭제하지 못했습니다.");
   }
 
   return (
-    <Card>
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <h2 className="font-bold">숙제 관리</h2>
-        <Button type="button" variant="secondary" onClick={() => setIsSubjectModalOpen(true)}>과목 관리</Button>
-      </div>
-      <div className="mt-4 rounded-md border border-line bg-slate-50 p-3">
-        <div className="flex flex-wrap gap-2">
-          <Button type="button" variant={selectedSubjectId === "all" ? "primary" : "secondary"} onClick={() => setSelectedSubjectId("all")}>전체</Button>
-          {subjects.map((subject) => (
-            <Button key={subject.id} type="button" variant={selectedSubjectId === subject.id ? "primary" : "secondary"} onClick={() => setSelectedSubjectId(subject.id)}>
-              {subject.name}
-            </Button>
-          ))}
+    <Modal title="과목 관리" onClose={onClose}>
+      <div className="grid gap-5">
+        <div className="grid gap-3 rounded-md border border-line bg-slate-50 p-4">
+          <h3 className="font-bold">과목 추가</h3>
+          <label className="grid gap-1 text-sm font-semibold">
+            과목명
+            <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="Reading A" />
+          </label>
+          <label className="grid gap-1 text-sm font-semibold">
+            설명
+            <Textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="선택 사항" />
+          </label>
+          <div className="flex justify-end">
+            <Button type="button" onClick={addSubject}>과목 추가</Button>
+          </div>
         </div>
-      </div>
-      <div className="mt-3 grid gap-3">
-        {filteredAssignments.length ? (
-          filteredAssignments.map((assignment) => (
-            <div key={assignment.id} className="rounded-md border border-line p-4">
-              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                <div>
-                  <h3 className="font-bold">{assignment.title}</h3>
-                  <p className="text-sm text-slate-500">마감 {assignment.dueAt ? formatDate(assignment.dueAt) : "-"}</p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    <Badge>대상 {assignment.targetCount}</Badge>
-                    <Badge tone="green">제출 {assignment.submittedCount}</Badge>
-                    <Badge tone="red">미제출 {assignment.missingCount}</Badge>
-                    <Badge tone="yellow">검토 {assignment.needsReviewCount}</Badge>
+        <div className="grid gap-3">
+          <h3 className="font-bold">과목 목록</h3>
+          {subjects.length ? (
+            subjects.map((subject) => {
+              const draft = draftFor(subject);
+              return (
+                <div key={subject.id} className="grid gap-3 rounded-md border border-line p-3">
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <label className="grid gap-1 text-sm font-semibold">
+                      과목명
+                      <Input value={draft.name} onChange={(event) => updateSubjectDraft(subject, { name: event.target.value })} />
+                    </label>
+                    <label className="grid gap-1 text-sm font-semibold">
+                      설명
+                      <Input value={draft.description} onChange={(event) => updateSubjectDraft(subject, { description: event.target.value })} />
+                    </label>
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <Button type="button" variant="secondary" onClick={() => saveSubject(subject)}>수정 저장</Button>
+                    <Button type="button" variant="danger" onClick={() => archiveSubject(subject.id)}>삭제</Button>
                   </div>
                 </div>
-                <div className="flex gap-2">
-                  <Button href={`/teacher/assignments/${assignment.id}/targets`} variant="secondary">
-                    배정 관리
-                  </Button>
-                  <Button href={`/teacher/assignments/new?assignmentId=${assignment.id}`} variant="secondary">
-                    수정
-                  </Button>
-                </div>
-              </div>
-            </div>
-          ))
-        ) : (
-          <p className="rounded-md border border-dashed border-line p-4 text-center text-sm text-slate-500">등록된 숙제가 없습니다.</p>
-        )}
+              );
+            })
+          ) : (
+            <p className="rounded-md border border-dashed border-line p-4 text-center text-sm text-slate-500">등록된 과목이 없습니다.</p>
+          )}
+        </div>
       </div>
-      {isSubjectModalOpen && (
-        <Modal title="과목 관리" onClose={() => setIsSubjectModalOpen(false)}>
-          <div className="grid gap-5">
-            <div className="grid gap-3 rounded-md border border-line bg-slate-50 p-4">
-              <h3 className="font-bold">과목 추가</h3>
-              <label className="grid gap-1 text-sm font-semibold">
-                과목명
-                <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="Reading A" />
-              </label>
-              <label className="grid gap-1 text-sm font-semibold">
-                설명
-                <Textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="선택 사항" />
-              </label>
-              <div className="flex justify-end">
-                <Button type="button" onClick={addSubject}>과목 추가</Button>
-              </div>
-            </div>
-            <div className="grid gap-3">
-              <h3 className="font-bold">과목 목록</h3>
-              {subjects.length ? (
-                subjects.map((subject) => {
-                  const draft = draftFor(subject);
-                  return (
-                    <div key={subject.id} className="grid gap-3 rounded-md border border-line p-3">
-                      <div className="grid gap-3 md:grid-cols-2">
-                        <label className="grid gap-1 text-sm font-semibold">
-                          과목명
-                          <Input value={draft.name} onChange={(event) => updateSubjectDraft(subject, { name: event.target.value })} />
-                        </label>
-                        <label className="grid gap-1 text-sm font-semibold">
-                          설명
-                          <Input value={draft.description} onChange={(event) => updateSubjectDraft(subject, { description: event.target.value })} />
-                        </label>
-                      </div>
-                      <div className="flex justify-end gap-2">
-                        <Button type="button" variant="secondary" onClick={() => saveSubject(subject)}>수정 저장</Button>
-                        <Button type="button" variant="danger" onClick={() => archiveSubject(subject.id)}>삭제</Button>
-                      </div>
-                    </div>
-                  );
-                })
-              ) : (
-                <p className="rounded-md border border-dashed border-line p-4 text-center text-sm text-slate-500">등록된 과목이 없습니다.</p>
-              )}
-            </div>
-          </div>
-        </Modal>
-      )}
-    </Card>
+    </Modal>
   );
 }
 
@@ -740,6 +1454,70 @@ function NoticeModal({ classId, notice, onClose, onSaved }: { classId: string; n
         <ModalActions onClose={onClose} onSave={save} isPending={isPending} />
       </div>
     </Modal>
+  );
+}
+
+function ClassSelectedDateSchedule({
+  selectedDate,
+  events,
+  tests,
+  assignments,
+}: {
+  selectedDate: string;
+  events: CalendarEvent[];
+  tests: TestRow[];
+  assignments: AssignmentRow[];
+}) {
+  const selectedEvents = events.filter((event) => dateOnly(event.eventDate) === selectedDate);
+  const selectedTests = tests.filter((test) => test.status !== "hidden" && dateOnly(test.testDate) === selectedDate);
+  const selectedAssignments = assignments.filter((assignment) => dateOnly(assignment.dueAt) === selectedDate);
+  const hasItems = selectedEvents.length > 0 || selectedTests.length > 0 || selectedAssignments.length > 0;
+
+  return (
+    <Card className="rounded-t-none border-t-0 shadow-none">
+      <h3 className="font-bold">{formatDate(selectedDate)} 일정</h3>
+      <div className="mt-3 grid gap-3">
+        {selectedEvents.map((event) => (
+          <article key={event.id} className="rounded-md border border-line bg-slate-50 p-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone={eventTone(event.eventType)}>{eventLabel(event.eventType)}</Badge>
+              <span className="text-xs font-semibold text-slate-500">{formatTimeRange(event.startTime, event.endTime, "시간 미정")}</span>
+            </div>
+            <p className="mt-2 font-bold">{event.title}</p>
+            {event.description && <p className="mt-1 text-sm leading-6 text-slate-600">{event.description}</p>}
+          </article>
+        ))}
+        {selectedTests.map((test) => (
+          <article key={test.id} className="rounded-md border border-line bg-slate-50 p-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone="yellow">시험</Badge>
+              <Badge tone="blue">{test.subject}</Badge>
+              <span className="text-xs font-semibold text-slate-500">{formatTimeRange(test.startTime, test.endTime, "시간 미정")}</span>
+            </div>
+            <p className="mt-2 font-bold">{test.title}</p>
+            {test.scope && <p className="mt-1 text-sm text-slate-600">범위: {test.scope}</p>}
+          </article>
+        ))}
+        {selectedAssignments.map((assignment) => (
+          <article key={assignment.id} className="rounded-md border border-line bg-slate-50 p-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone="blue">숙제 마감</Badge>
+              {assignment.subjectName && <Badge>{assignment.subjectName}</Badge>}
+            </div>
+            <p className="mt-2 font-bold">{assignment.title}</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Badge>대상 {assignment.targetCount}</Badge>
+              <Badge tone="green">제출 {assignment.submittedCount}</Badge>
+              <Badge tone="red">미제출 {assignment.missingCount}</Badge>
+              <Badge tone="yellow">검토 {assignment.needsReviewCount}</Badge>
+            </div>
+          </article>
+        ))}
+        {!hasItems && (
+          <p className="rounded-md border border-dashed border-line p-4 text-center text-sm text-slate-500">선택한 날짜에 등록된 일정이 없습니다.</p>
+        )}
+      </div>
+    </Card>
   );
 }
 
@@ -848,6 +1626,7 @@ function ClassCalendarGrid({
   onPreviousMonth,
   onNextMonth,
   onToday,
+  action,
 }: {
   events: CalendarEvent[];
   tests: TestRow[];
@@ -858,6 +1637,7 @@ function ClassCalendarGrid({
   onPreviousMonth: () => void;
   onNextMonth: () => void;
   onToday: () => void;
+  action?: ReactNode;
 }) {
   const days = buildMonthDays(displayMonth);
   const eventsByDate = useMemo(() => {
@@ -909,7 +1689,7 @@ function ClassCalendarGrid({
           >
             오늘
           </button>
-          <Badge tone="blue">반 캘린더</Badge>
+          {action ?? <Badge tone="blue">반 캘린더</Badge>}
         </div>
       </div>
       <div className="grid grid-cols-7 gap-1 text-center text-xs font-bold text-slate-500">

@@ -13,6 +13,11 @@ export const runtime = "nodejs";
 const MAX_IMAGE_FILE_SIZE = 10 * 1024 * 1024;
 const MAX_AUDIO_FILE_SIZE = 20 * 1024 * 1024;
 
+type StorageBucketOptions = {
+  fileSizeLimit: number;
+  allowedMimeTypes: string[];
+};
+
 type AssignmentRow = {
   id: string;
   title: string;
@@ -101,6 +106,63 @@ function isImageFile(file: File) {
 
 function isAudioFile(file: File) {
   return file.type.startsWith("audio/") || /\.(mp3|m4a|wav|webm|ogg)$/i.test(file.name);
+}
+
+function storageErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isMissingBucketError(error: { status?: number; message?: string } | null) {
+  return error?.status === 404 || /bucket.*not found|not found|does not exist/i.test(error?.message ?? "");
+}
+
+function supportsMimeType(allowedMimeTypes: string[] | undefined, mimeTypes: string[]) {
+  if (!allowedMimeTypes || allowedMimeTypes.length === 0) return true;
+  return mimeTypes.some((mimeType) => {
+    const [type] = mimeType.split("/");
+    return allowedMimeTypes.includes(mimeType) || allowedMimeTypes.includes(`${type}/*`);
+  });
+}
+
+async function ensureStorageBucket(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  bucket: string,
+  options: StorageBucketOptions,
+) {
+  const current = await supabase.storage.getBucket(bucket);
+
+  if (current.error) {
+    if (!isMissingBucketError(current.error)) {
+      throw new Error(`Storage bucket check failed (${bucket}): ${current.error.message}`);
+    }
+
+    const created = await supabase.storage.createBucket(bucket, {
+      public: false,
+      fileSizeLimit: options.fileSizeLimit,
+      allowedMimeTypes: options.allowedMimeTypes,
+    });
+
+    if (created.error && created.error.status !== 409) {
+      throw new Error(`Storage bucket create failed (${bucket}): ${created.error.message}`);
+    }
+    return;
+  }
+
+  const fileSizeLimit = current.data.file_size_limit ?? 0;
+  const needsFileSizeUpdate = fileSizeLimit > 0 && fileSizeLimit < options.fileSizeLimit;
+  const needsMimeUpdate = !supportsMimeType(current.data.allowed_mime_types, options.allowedMimeTypes);
+
+  if (!needsFileSizeUpdate && !needsMimeUpdate) return;
+
+  const updated = await supabase.storage.updateBucket(bucket, {
+    public: current.data.public,
+    fileSizeLimit: needsFileSizeUpdate ? options.fileSizeLimit : current.data.file_size_limit,
+    allowedMimeTypes: needsMimeUpdate ? options.allowedMimeTypes : current.data.allowed_mime_types,
+  });
+
+  if (updated.error) {
+    throw new Error(`Storage bucket update failed (${bucket}): ${updated.error.message}`);
+  }
 }
 
 async function signedUrl(bucket: string, path: string | null) {
@@ -367,6 +429,15 @@ export async function POST(request: Request) {
     }
     imageFileName = safeFileName(imageFile.name);
     imageStoragePath = `assignments/${id}/images/${imageFileName}`;
+    try {
+      await ensureStorageBucket(supabase, storageBuckets.images, {
+        fileSizeLimit: MAX_IMAGE_FILE_SIZE,
+        allowedMimeTypes: ["image/*"],
+      });
+    } catch (error) {
+      console.error(error);
+      return NextResponse.json({ error: `이미지 저장소 준비 실패: ${storageErrorMessage(error)}` }, { status: 500 });
+    }
     const { error } = await supabase.storage.from(storageBuckets.images).upload(
       imageStoragePath,
       Buffer.from(await imageFile.arrayBuffer()),
@@ -374,7 +445,7 @@ export async function POST(request: Request) {
     );
 
     if (error) {
-      console.error(error);
+      console.error({ bucket: storageBuckets.images, path: imageStoragePath, error });
       return NextResponse.json({ error: `이미지 업로드 실패: ${error.message}` }, { status: 500 });
     }
 
@@ -390,6 +461,15 @@ export async function POST(request: Request) {
     }
     audioFileName = safeFileName(audioFile.name);
     audioStoragePath = `assignments/${id}/audio/${audioFileName}`;
+    try {
+      await ensureStorageBucket(supabase, storageBuckets.audio, {
+        fileSizeLimit: MAX_AUDIO_FILE_SIZE,
+        allowedMimeTypes: ["audio/*", "application/octet-stream"],
+      });
+    } catch (error) {
+      console.error(error);
+      return NextResponse.json({ error: `오디오 저장소 준비 실패: ${storageErrorMessage(error)}` }, { status: 500 });
+    }
     const { error } = await supabase.storage.from(storageBuckets.audio).upload(
       audioStoragePath,
       Buffer.from(await audioFile.arrayBuffer()),
@@ -397,7 +477,7 @@ export async function POST(request: Request) {
     );
 
     if (error) {
-      console.error(error);
+      console.error({ bucket: storageBuckets.audio, path: audioStoragePath, error });
       return NextResponse.json({ error: `오디오 업로드 실패: ${error.message}` }, { status: 500 });
     }
 
