@@ -144,6 +144,7 @@ export default function ClassDetailPage() {
   const [homeworkOverview, setHomeworkOverview] = useState<ClassHomeworkOverview | null>(null);
   const [message, setMessage] = useState("");
   const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isAddStudentOpen, setIsAddStudentOpen] = useState(false);
   const [isSubjectModalOpen, setIsSubjectModalOpen] = useState(false);
   const [isReactivateOpen, setIsReactivateOpen] = useState(false);
   const [deleteActionPreview, setDeleteActionPreview] = useState<DeletePreview | null>(null);
@@ -277,6 +278,7 @@ export default function ClassDetailPage() {
             </div>
             <div className="flex flex-wrap gap-2">
               <Button variant="secondary" onClick={() => setIsEditOpen(true)}>반 수정하기</Button>
+              <Button type="button" variant="secondary" onClick={() => setIsAddStudentOpen(true)}>학생 추가</Button>
               <Button type="button" variant="secondary" onClick={() => setIsSubjectModalOpen(true)}>과목 관리</Button>
               {classItem?.status === "archived" ? (
                 <Button onClick={() => setIsReactivateOpen(true)}>반 재활성화</Button>
@@ -312,6 +314,17 @@ export default function ClassDetailPage() {
         {activeTab === "homework" && <HomeworkTab subjects={subjects} assignments={assignments} />}
         {activeTab === "schedule" && <ScheduleTab classId={classId} events={events} tests={tests} assignments={assignments} onChanged={refresh} />}
         {activeTab === "tests" && <TestsTab classId={classId} students={students} tests={tests} onChanged={refresh} />}
+        {isAddStudentOpen && (
+          <AddExistingStudentsModal
+            classId={classId}
+            currentStudentIds={students.map((student) => student.id)}
+            onClose={() => setIsAddStudentOpen(false)}
+            onAdded={(addedCount) => {
+              setIsAddStudentOpen(false);
+              refresh(`학생 ${addedCount}명을 반에 추가했습니다.`);
+            }}
+          />
+        )}
         {isSubjectModalOpen && (
           <SubjectManagementModal
             classId={classId}
