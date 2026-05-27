@@ -135,7 +135,7 @@ export function WritingHomework({ assignment }: { assignment: Assignment }) {
         <h2 className="font-bold">{item?.writingMode === "picture_description" ? "그림" : "주제"}</h2>
         {assignment.imageUrl && (
           <div className="mt-4 overflow-hidden rounded-lg border border-line bg-slate-50">
-            <img src={assignment.imageUrl} alt="라이팅 과제 이미지" className="max-h-[420px] w-full object-contain" />
+            <img src={assignment.imageUrl} alt="라이팅 과제 이미지" className="h-auto w-full" />
           </div>
         )}
         {promptText && (

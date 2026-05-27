@@ -42,11 +42,11 @@ function Content({ assignment }: { assignment: Assignment }) {
       <h2 className="font-bold">읽을 내용</h2>
       {assignment.imageUrl && (
         <div className="mt-4 overflow-hidden rounded-lg border border-line bg-slate-50">
-          <img src={assignment.imageUrl} alt="숙제 이미지" className="max-h-[420px] w-full object-contain" />
+          <img src={assignment.imageUrl} alt="숙제 이미지" className="h-auto w-full" />
         </div>
       )}
       {item?.passageText && (
-        <div className="mt-4 max-h-[300px] overflow-auto rounded-lg bg-paper p-4">
+        <div className="mt-4 rounded-lg bg-paper p-4">
           <p className="whitespace-pre-wrap text-lg leading-9 text-slate-800">{item.passageText}</p>
         </div>
       )}
@@ -127,7 +127,7 @@ export function RlRecordingHomework({ assignment }: { assignment: Assignment }) 
             {item?.audioUrl ? (
               <>
                 <AudioPlayer ref={audioRef} className="mt-4" src={item.audioUrl} preload="metadata" onEnded={() => setHasListenedFullAudio(true)} />
-                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                <div className="mt-3 grid grid-cols-2 gap-2">
                   <Button type="button" variant="secondary" onClick={() => { if (audioRef.current) audioRef.current.currentTime = Math.max(0, audioRef.current.currentTime - 10); }}>-10초</Button>
                   <Button type="button" variant="secondary" onClick={() => { if (audioRef.current) audioRef.current.currentTime = Math.min(audioRef.current.duration || 0, audioRef.current.currentTime + 10); }}>+10초</Button>
                 </div>
@@ -156,19 +156,19 @@ export function RlRecordingHomework({ assignment }: { assignment: Assignment }) 
             )}
             <div className="mt-5 grid gap-3 sm:grid-cols-2">
               {recorder.state === "recording" ? (
-                <Button type="button" variant="danger" onClick={recorder.stopRecording}>녹음 중지</Button>
+                <Button type="button" variant="danger" onClick={recorder.stopRecording}>녹음 완료</Button>
               ) : (
-                <Button type="button" onClick={startRecording}>녹음 시작</Button>
+                <Button type="button" onClick={startRecording}>{recorder.previewUrl ? "다시 녹음하기" : "녹음 시작"}</Button>
               )}
-              <Button type="button" variant="secondary" onClick={recorder.resetRecording} disabled={!recorder.previewUrl}>다시 녹음하기</Button>
+              <Button type="button" variant="secondary" onClick={recorder.resetRecording} disabled={!recorder.previewUrl}>초기화하기</Button>
             </div>
           </>
         )}
       </Card>
       <div className="grid gap-3 sm:grid-cols-3">
-        <Button type="button" variant={step === 1 ? "primary" : "secondary"} onClick={() => goStep(1)}>(1) 듣고 연습하기</Button>
-        <Button type="button" variant={step === 2 ? "primary" : "secondary"} disabled={!hasListenedFullAudio} onClick={() => goStep(2)}>(2) 녹음하기</Button>
-        <Button type="button" disabled={!canSubmit} onClick={() => setSubmitOpen(true)}>(3) 제출하기</Button>
+        <Button type="button" variant={step === 1 ? "primary" : "secondary"} className={step === 1 ? "cursor-default hover:bg-action" : undefined} onClick={() => goStep(1)}>듣고 연습하기</Button>
+        <Button type="button" variant={step === 2 ? "primary" : "secondary"} className={step === 2 ? "cursor-default hover:bg-action" : undefined} disabled={!hasListenedFullAudio} onClick={() => goStep(2)}>녹음하기</Button>
+        <Button type="button" disabled={!canSubmit} onClick={() => setSubmitOpen(true)}>제출하기</Button>
       </div>
       {submitOpen && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/35 p-4" role="dialog" aria-modal="true">

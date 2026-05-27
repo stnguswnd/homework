@@ -446,6 +446,7 @@ function OverviewTab({
 }) {
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
   const [isNoticeOpen, setIsNoticeOpen] = useState(false);
+  const [isTestOpen, setIsTestOpen] = useState(false);
   const [assignSubject, setAssignSubject] = useState<ClassSubject | null>(null);
   const firstDate = events[0]?.eventDate ?? tests[0]?.testDate ?? assignments.find((assignment) => assignment.dueAt)?.dueAt ?? "2026-05-25";
   const [selectedDate, setSelectedDate] = useState(dateOnly(firstDate));
@@ -510,7 +511,7 @@ function OverviewTab({
             assignments={assignments}
           />
         </div>
-        <ClassTestOverview tests={upcomingTests} />
+        <ClassTestOverview tests={upcomingTests} onCreate={() => setIsTestOpen(true)} />
       </div>
       {isScheduleOpen && (
         <ClassScheduleForm
@@ -544,6 +545,17 @@ function OverviewTab({
           onAssigned={(assignedCount) => {
             setAssignSubject(null);
             onChanged(`과제를 배정했습니다. 대상 ${assignedCount}건`);
+          }}
+        />
+      )}
+      {isTestOpen && (
+        <TestModal
+          classId={classId}
+          test={null}
+          onClose={() => setIsTestOpen(false)}
+          onSaved={() => {
+            setIsTestOpen(false);
+            onChanged("테스트를 저장했습니다.");
           }}
         />
       )}
@@ -961,12 +973,15 @@ function SubjectAssignmentModal({
   );
 }
 
-function ClassTestOverview({ tests }: { tests: TestRow[] }) {
+function ClassTestOverview({ tests, onCreate }: { tests: TestRow[]; onCreate: () => void }) {
   return (
     <Card className="h-full">
       <div className="flex items-center justify-between gap-3">
         <h2 className="font-bold">시험</h2>
-        <Badge tone="yellow">{tests.length}개</Badge>
+        <div className="flex items-center gap-2">
+          <Badge tone="yellow">{tests.length}개</Badge>
+          <Button type="button" onClick={onCreate}>시험 추가</Button>
+        </div>
       </div>
       <div className="mt-4 grid gap-3">
         {tests.length ? (

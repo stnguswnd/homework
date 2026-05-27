@@ -33,11 +33,11 @@ function Content({ assignment }: { assignment: Assignment }) {
       <h2 className="font-bold">읽을 내용</h2>
       {assignment.imageUrl && (
         <div className="mt-4 overflow-hidden rounded-lg border border-line bg-slate-50">
-          <img src={assignment.imageUrl} alt="숙제 이미지" className="max-h-[420px] w-full object-contain" />
+          <img src={assignment.imageUrl} alt="숙제 이미지" className="h-auto w-full" />
         </div>
       )}
       {item?.passageText && (
-        <div className="mt-4 max-h-[300px] overflow-auto rounded-lg bg-paper p-4">
+        <div className="mt-4 rounded-lg bg-paper p-4">
           <p className="whitespace-pre-wrap text-lg leading-9 text-slate-800">{item.passageText}</p>
         </div>
       )}
@@ -82,7 +82,7 @@ export function ListeningHomework({ assignment }: { assignment: Assignment }) {
         {item?.audioUrl ? (
           <>
             <AudioPlayer ref={audioRef} className="mt-4" src={item.audioUrl} preload="metadata" onEnded={() => setHasListenedFullAudio(true)} />
-            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            <div className="mt-3 grid grid-cols-2 gap-2">
               <Button type="button" variant="secondary" onClick={() => { if (audioRef.current) audioRef.current.currentTime = Math.max(0, audioRef.current.currentTime - 10); }}>-10초</Button>
               <Button type="button" variant="secondary" onClick={() => { if (audioRef.current) audioRef.current.currentTime = Math.min(audioRef.current.duration || 0, audioRef.current.currentTime + 10); }}>+10초</Button>
             </div>
@@ -96,8 +96,8 @@ export function ListeningHomework({ assignment }: { assignment: Assignment }) {
         {error && <p className="mt-3 text-sm font-semibold text-danger">{error}</p>}
       </Card>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Button type="button">(1) 듣고 연습하기</Button>
-        <Button type="button" disabled={!hasListenedFullAudio || pending} onClick={() => setCompleteOpen(true)}>(2) 완료하기</Button>
+        <Button type="button" className="cursor-default hover:bg-action">듣고 연습하기</Button>
+        <Button type="button" disabled={!hasListenedFullAudio || pending} onClick={() => setCompleteOpen(true)}>완료하기</Button>
       </div>
       {completeOpen && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/35 p-4" role="dialog" aria-modal="true">

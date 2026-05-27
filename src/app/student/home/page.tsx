@@ -164,16 +164,8 @@ function StudentTeamHeader({
             {studentName} 학생의 오늘 학습을 확인해요
           </h1>
           <p className="mt-4 max-w-2xl text-base leading-7 text-[#dcfce7] md:text-lg">
-            숙제, 공지, 수업 캘린더와 시험 결과를 한 화면에서 이어서 볼 수 있어요.
+            Enjoy & Beyond! janetimes english 에서 즐겁게 성장해보아요
           </p>
-          <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-            <Button href="#weekly-homework" className="bg-white text-[#14532d] hover:bg-[#f3faf4]">
-              숙제 바로가기
-            </Button>
-            <Button href="#student-calendar" variant="secondary" className="border-white/30 bg-white/12 text-white hover:bg-white/20">
-              캘린더 보기
-            </Button>
-          </div>
         </div>
         <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
           <HeroMetric label="진행할 숙제" value={`${incompleteCount}개`} />
@@ -210,7 +202,7 @@ function WeeklyHomeworkSection({ assignments }: { assignments: AssignmentWithTar
           <p className="text-sm text-slate-500">이번주 숙제가 없습니다.</p>
         </Card>
       ) : (
-        <div className="grid gap-4 lg:grid-cols-3">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 lg:gap-4">
           {weeklyAssignments.map((assignment) => (
             <HomeworkSubjectCard key={assignment.id} assignment={assignment} />
           ))}
@@ -227,35 +219,28 @@ function HomeworkSubjectCard({ assignment }: { assignment: AssignmentWithTarget 
   const hasSubmitted = Boolean(assignment.submittedAt);
   const href = hasSubmitted && !needsResubmit ? `/student/assignments/${assignment.id}/complete` : `/student/assignments/${assignment.id}`;
   const buttonLabel = needsResubmit ? "다시 제출하기" : hasSubmitted ? "제출 내용 보기" : "숙제하기";
-  const homeworkItems = [
-    item?.title ?? assignment.title,
-    assignment.description ?? assignmentTypeLabel(assignment.assignmentType),
-    item?.passageText ? "녹음 과제 제출" : "숙제 제출",
-  ];
+  const passageTitle = item?.title && item.title !== assignment.title ? item.title : "";
 
   return (
-    <Card className="flex min-h-[340px] flex-col">
-      <div className="flex items-start justify-between gap-3">
-        <div>
+    <Card className="flex min-h-[300px] flex-col !p-2 sm:min-h-[340px]">
+      <div className="flex flex-col items-start gap-2 sm:flex-row sm:justify-between sm:gap-3">
+        <div className="flex flex-wrap gap-2">
           <Badge tone="blue">{subjectForAssignment(assignment)}</Badge>
-          <p className="mt-3 text-sm font-semibold text-[#5b655d]">수업 시간</p>
-          <p className="text-sm font-bold text-ink">반 캘린더에서 확인</p>
+          <Badge>{assignmentTypeLabel(assignment.assignmentType)}</Badge>
         </div>
         {assignment.dueAt && <Badge tone="yellow">마감 {formatDateTime(assignment.dueAt)}</Badge>}
       </div>
-      <div className="mt-5 flex-1">
-        <h3 className="text-2xl font-bold leading-[1.3]">{assignment.title}</h3>
-        <div className="mt-3 grid gap-2">
-          {homeworkItems.map((itemText) => (
-            <div key={itemText} className="rounded-[14px] border border-line bg-[#f3faf4] px-3 py-2 text-sm font-semibold text-[#5b655d]">
-              {itemText}
-            </div>
-          ))}
-        </div>
+      <div className="mt-4 flex-1 sm:mt-5">
+        <h3 className="text-base font-bold leading-[1.35] sm:text-2xl">{assignment.title}</h3>
+        {passageTitle && (
+          <div className="mt-2 rounded-[14px] border border-line bg-[#f3faf4] px-2.5 py-2 text-xs font-semibold text-[#5b655d] sm:mt-3 sm:px-3 sm:text-sm">
+            {passageTitle}
+          </div>
+        )}
       </div>
-      <div className="mt-5 rounded-[18px] bg-paper p-3">
+      <div className="mt-4 rounded-[18px] bg-paper p-1 sm:mt-5 sm:p-3">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-bold">숙제 상태</span>
+          <span className="text-xs font-bold sm:text-sm">숙제 상태</span>
           <Badge tone={homeworkStatusTone(status)}>{homeworkStatusLabel(status)}</Badge>
         </div>
         {(status === "completed" || status === "returned") && assignment.teacherComment && (
@@ -263,7 +248,7 @@ function HomeworkSubjectCard({ assignment }: { assignment: AssignmentWithTarget 
         )}
         {assignment.submittedAt && <p className="mt-2 text-xs font-semibold text-slate-500">제출 {formatDateTime(assignment.submittedAt)}</p>}
       </div>
-      <Button href={href} className="mt-4 min-h-12 w-full">
+      <Button href={href} className="mt-4 min-h-10 w-full px-3 text-xs sm:min-h-12 sm:text-sm">
         {buttonLabel}
       </Button>
     </Card>
