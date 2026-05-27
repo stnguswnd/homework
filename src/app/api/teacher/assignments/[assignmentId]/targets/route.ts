@@ -22,6 +22,7 @@ type TargetRow = {
   class_subject_name: string | null;
   student_id: string;
   student_name: string;
+  submission_id: string | null;
   submitted_at: Date | null;
   submission_status: string | null;
 };
@@ -52,6 +53,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ ass
         coalesce(c.name, '미지정 반') as class_name,
         s.id as student_id,
         s.name as student_name,
+        sub.id as submission_id,
         sub.submitted_at,
         sub.status as submission_status
       from assignments a
@@ -82,6 +84,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ ass
       studentName: string;
       targetId: string;
       dueAt: string | null;
+      detailHref: string | null;
       submissionStatus: "submitted" | "not_submitted";
       submittedAt: string | null;
     }>;
@@ -104,6 +107,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ ass
       studentName: row.student_name,
       targetId: row.target_id,
       dueAt: toIso(row.target_due_at),
+      detailHref: row.submission_id ? `/teacher/submissions/${row.submission_id}` : null,
       submissionStatus: submitted ? "submitted" : "not_submitted",
       submittedAt: toIso(row.submitted_at),
     });

@@ -18,6 +18,7 @@ type AssignmentClass = {
   status?: "active" | "archived";
   studentCount: number;
   students: Array<{ id: string; name: string }>;
+  subjects: Array<{ id: string; name: string; description?: string | null }>;
 };
 
 type TargetStudent = {
@@ -25,6 +26,7 @@ type TargetStudent = {
   studentName: string;
   targetId: string;
   dueAt: string | null;
+  detailHref: string | null;
   submissionStatus: "submitted" | "not_submitted";
   submittedAt: string | null;
 };
@@ -92,6 +94,7 @@ export default function AssignmentTargetsPage() {
   const [selectedTargetIds, setSelectedTargetIds] = useState<string[]>([]);
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [addClassId, setAddClassId] = useState("");
+  const [addClassSubjectId, setAddClassSubjectId] = useState("");
   const [addStudentIds, setAddStudentIds] = useState<string[]>([]);
   const [addDueAt, setAddDueAt] = useState("");
   const [bulkDueAt, setBulkDueAt] = useState("");
@@ -125,6 +128,7 @@ export default function AssignmentTargetsPage() {
       const activeClasses = json.filter((item) => item.status !== "archived");
       setClasses(activeClasses);
       setAddClassId((current) => current || activeClasses[0]?.id || "");
+      setAddClassSubjectId((current) => current || activeClasses[0]?.subjects[0]?.id || "");
     } catch {
       setClasses([]);
     }
@@ -169,7 +173,15 @@ export default function AssignmentTargetsPage() {
   }, [data, selectedTargetIds]);
   const selectedSubmittedCount = selectedTargets.filter((target) => target.submissionStatus === "submitted").length;
   const addClass = classes.find((item) => item.id === addClassId);
+  const addClassSubjects = addClass?.subjects ?? [];
   const addableStudents = (addClass?.students ?? []).filter((student) => !activeTargetStudentIds.has(student.id));
+
+  function selectAddClass(classId: string) {
+    const nextClass = classes.find((item) => item.id === classId);
+    setAddClassId(classId);
+    setAddClassSubjectId(nextClass?.subjects[0]?.id ?? "");
+    setAddStudentIds([]);
+  }
 
   function toggleGroup(classId: string) {
     setExpanded((current) => current.includes(classId) ? current.filter((id) => id !== classId) : [...current, classId]);
@@ -194,15 +206,15 @@ export default function AssignmentTargetsPage() {
 
   function addTargets() {
     const dueAt = dateTimeLocalToIso(addDueAt);
-    if (!addClassId || addStudentIds.length === 0) {
-      setError("추가 배정할 반과 학생을 선택해주세요.");
+    if (!addClassId || !addClassSubjectId || addStudentIds.length === 0) {
+      setError("추가 배정할 반, 반 과목, 학생을 선택해주세요.");
       return;
     }
     startTransition(async () => {
       const response = await fetch(`/api/teacher/assignments/${assignmentId}/targets`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ classId: addClassId, studentIds: addStudentIds, dueAt }),
+        body: JSON.stringify({ classId: addClassId, classSubjectId: addClassSubjectId, studentIds: addStudentIds, dueAt }),
       });
       const json = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -343,7 +355,13 @@ export default function AssignmentTargetsPage() {
               <Button type="button" variant="secondary" onClick={() => setIsAddOpen(false)}>닫기</Button>
             </div>
             <div className="mt-5 grid gap-3">
-              <label className="grid gap-2 text-sm font-semibold">반 선택<Select value={addClassId} onChange={(event) => { setAddClassId(event.target.value); setAddStudentIds([]); }}>{classes.map((classItem) => <option key={classItem.id} value={classItem.id}>{classItem.name}</option>)}</Select></label>
+              <label className="grid gap-2 text-sm font-semibold">반 선택<Select value={addClassId} onChange={(event) => selectAddClass(event.target.value)}>{classes.map((classItem) => <option key={classItem.id} value={classItem.id}>{classItem.name}</option>)}</Select></label>
+              <label className="grid gap-2 text-sm font-semibold">
+                반 과목 선택
+                <Select value={addClassSubjectId} onChange={(event) => setAddClassSubjectId(event.target.value)} disabled={addClassSubjects.length === 0}>
+                  {addClassSubjects.length ? addClassSubjects.map((subject) => <option key={subject.id} value={subject.id}>{subject.name}</option>) : <option value="">과목 없음</option>}
+                </Select>
+              </label>
               <label className="grid gap-2 text-sm font-semibold">마감일<Input type="datetime-local" value={addDueAt} onChange={(event) => setAddDueAt(event.target.value)} /></label>
               <div className="max-h-[45vh] overflow-auto rounded-md border border-line p-2">
                 {addableStudents.length ? addableStudents.map((student) => (
@@ -353,7 +371,7 @@ export default function AssignmentTargetsPage() {
                   </label>
                 )) : <p className="p-2 text-sm text-slate-500">추가 배정할 학생이 없습니다.</p>}
               </div>
-              <Button type="button" onClick={addTargets} disabled={isPending || addStudentIds.length === 0}>{isPending ? "배정 중..." : "학생 추가 배정"}</Button>
+              <Button type="button" onClick={addTargets} disabled={isPending || !addClassSubjectId || addStudentIds.length === 0}>{isPending ? "배정 중..." : "학생 추가 배정"}</Button>
             </div>
           </div>
         </div>
@@ -397,7 +415,7 @@ function StudentTable({ students, selectedTargetIds, onToggle }: { students: Tar
     <div className="overflow-x-auto border-t border-line">
       <table className="w-full min-w-[720px] text-left text-sm">
         <thead className="bg-slate-50 text-slate-500">
-          <tr><th className="w-10 px-3 py-2"></th><th className="px-3 py-2">학생명</th><th className="px-3 py-2">제출 상태</th><th className="px-3 py-2">제출 일시</th><th className="px-3 py-2">개별 마감일</th></tr>
+          <tr><th className="w-10 px-3 py-2"></th><th className="px-3 py-2">학생명</th><th className="px-3 py-2">제출 상태</th><th className="px-3 py-2">제출 일시</th><th className="px-3 py-2">개별 마감일</th><th className="px-3 py-2">피드백</th></tr>
         </thead>
         <tbody className="divide-y divide-line">
           {students.map((student) => (
@@ -407,6 +425,13 @@ function StudentTable({ students, selectedTargetIds, onToggle }: { students: Tar
               <td className="px-3 py-2"><Badge tone={student.submissionStatus === "submitted" ? "green" : "gray"}>{student.submissionStatus === "submitted" ? "제출 완료" : "미제출"}</Badge></td>
               <td className="px-3 py-2">{student.submittedAt ? formatDue(student.submittedAt) : "-"}</td>
               <td className="px-3 py-2">{student.dueAt ? formatDue(student.dueAt) : "-"}</td>
+              <td className="px-3 py-2">
+                {student.detailHref ? (
+                  <Button href={student.detailHref} variant="secondary">피드백</Button>
+                ) : (
+                  <Button disabled variant="secondary">피드백</Button>
+                )}
+              </td>
             </tr>
           ))}
         </tbody>
