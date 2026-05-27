@@ -11,6 +11,7 @@ import { submitRecording } from "@/features/submissions/api/submissionApi";
 import { useAudioRecorder } from "@/hooks/useAudioRecorder";
 import { formatDateTime, formatDue } from "@/lib/format";
 import type { Assignment } from "@/types/assignment";
+import { ReadyStepButton } from "./ReadyStepButton";
 
 type RlHomeworkStep = 1 | 2;
 
@@ -174,8 +175,8 @@ export function RlRecordingHomework({ assignment }: { assignment: Assignment }) 
       </Card>
       <div className="grid gap-3 sm:grid-cols-3">
         <Button type="button" variant={step === 1 ? "primary" : "secondary"} className={step === 1 ? "hover:bg-action" : undefined} onClick={playOriginalAudio}>듣고 연습하기</Button>
-        <Button type="button" variant={step === 2 ? "primary" : "secondary"} className={step === 2 ? "cursor-default hover:bg-action" : undefined} disabled={!hasListenedFullAudio} onClick={() => goStep(2)}>녹음하기</Button>
-        <Button type="button" disabled={!canSubmit} onClick={() => setSubmitOpen(true)}>제출하기</Button>
+        <ReadyStepButton variant={step === 2 ? "primary" : "secondary"} className={step === 2 ? "cursor-default hover:bg-action" : undefined} disabled={!hasListenedFullAudio} onClick={() => goStep(2)} tooltip="음원을 끝까지 들었어요. 이제 녹음 단계로 넘어갈 수 있어요.">녹음하기</ReadyStepButton>
+        <ReadyStepButton disabled={!canSubmit} onClick={() => setSubmitOpen(true)} tooltip="녹음이 완료됐어요. 제출하기를 누를 수 있어요.">제출하기</ReadyStepButton>
       </div>
       {submitOpen && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/35 p-4" role="dialog" aria-modal="true">

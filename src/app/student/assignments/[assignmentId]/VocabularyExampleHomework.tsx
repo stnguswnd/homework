@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Textarea } from "@/components/ui/Textarea";
 import type { Assignment } from "@/types/assignment";
+import { ReadyStepButton } from "./ReadyStepButton";
 
 type WordState = {
   originalAnswerText: string;
@@ -196,11 +197,11 @@ export function VocabularyExampleHomework({ assignment }: { assignment: Assignme
             {pending ? "첨삭 중..." : currentState.reviewed ? "1회 첨삭 완료" : "AI 첨삭받기"}
           </Button>
           {isLast ? (
-            <Button type="button" disabled={!allReady || pending} onClick={() => setIsSubmitOpen(true)}>제출하기</Button>
+            <ReadyStepButton disabled={!allReady || pending} onClick={() => setIsSubmitOpen(true)} tooltip="모든 단어 연습이 끝났어요. 제출할 수 있어요.">제출하기</ReadyStepButton>
           ) : (
-            <Button type="button" disabled={!currentState.reviewed || !currentState.revisedAnswerText.trim()} onClick={() => setCurrentIndex((value) => Math.min(value + 1, vocabularyItems.length - 1))}>
+            <ReadyStepButton disabled={!currentState.reviewed || !currentState.revisedAnswerText.trim()} onClick={() => setCurrentIndex((value) => Math.min(value + 1, vocabularyItems.length - 1))} tooltip="첨삭 확인과 다시 쓰기가 끝났어요. 다음 단어로 넘어갈 수 있어요.">
               다음 단어
-            </Button>
+            </ReadyStepButton>
           )}
         </div>
       </Card>

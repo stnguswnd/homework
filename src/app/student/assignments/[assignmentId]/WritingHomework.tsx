@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/Textarea";
 import { requestWritingFeedback, submitWritingAssignment, type WritingFeedbackResult } from "@/features/submissions/api/submissionApi";
 import { formatDateTime, formatDue } from "@/lib/format";
 import type { Assignment } from "@/types/assignment";
+import { ReadyStepButton } from "./ReadyStepButton";
 
 function writingInstruction(item: Assignment["items"][number]) {
   const unit = item.writingUnit === "sentences" ? "sentences" : "paragraphs";
@@ -222,9 +223,9 @@ export function WritingHomework({ assignment }: { assignment: Assignment }) {
           <Button type="button" variant="secondary" disabled={!canRequestAiFeedback} onClick={requestFeedback} className="min-h-12 text-base">
             {hasReceivedAiFeedback ? "AI 첨삭 다시 받기" : "AI 첨삭받기"}
           </Button>
-          <Button type="button" disabled={!canSubmit} onClick={() => setIsSubmitModalOpen(true)} className="min-h-12 text-base">
+          <ReadyStepButton disabled={!canSubmit} onClick={() => setIsSubmitModalOpen(true)} className="min-h-12 text-base" tooltip="수정본 작성이 끝났어요. 제출할 수 있어요.">
             제출하기
-          </Button>
+          </ReadyStepButton>
         </div>
       </Card>
 

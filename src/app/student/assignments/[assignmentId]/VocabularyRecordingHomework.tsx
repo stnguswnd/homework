@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import type { Assignment } from "@/types/assignment";
+import { ReadyStepButton } from "./ReadyStepButton";
 
 function formatDateTime(value?: string | null) {
   if (!value) return "-";
@@ -164,9 +165,9 @@ export function VocabularyRecordingHomework({ assignment }: { assignment: Assign
               다시 녹음하기
             </Button>
           </div>
-          <Button type="button" className="min-h-12 text-base" disabled={!recordingBlob || recordingStatus === "recording" || pending} onClick={() => setIsSubmitOpen(true)}>
+          <ReadyStepButton className="min-h-12 text-base" disabled={!recordingBlob || recordingStatus === "recording" || pending} onClick={() => setIsSubmitOpen(true)} tooltip="녹음이 완료됐어요. 제출할 수 있어요.">
             제출하기
-          </Button>
+          </ReadyStepButton>
         </div>
       </div>
 

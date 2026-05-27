@@ -1,7 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -9,16 +8,47 @@ import { cn } from "@/lib/utils";
 
 type LoginMode = "teacher" | "student";
 
+function getCookie(name: string) {
+  return document.cookie
+    .split(";")
+    .map((cookie) => cookie.trim())
+    .find((cookie) => cookie.startsWith(`${name}=`))
+    ?.slice(name.length + 1);
+}
+
+function redirectIfAlreadyAuthenticated() {
+  const role = getCookie("homework_role");
+  if (role === "teacher") {
+    window.location.replace("/teacher/dashboard");
+  }
+  if (role === "student") {
+    window.location.replace("/student/home");
+  }
+}
+
 export function LoginForm() {
-  const router = useRouter();
   const [mode, setMode] = useState<LoginMode>("teacher");
   const [error, setError] = useState("");
   const [pending, startTransition] = useTransition();
+
+  useEffect(() => {
+    redirectIfAlreadyAuthenticated();
+
+    const handlePageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) {
+        redirectIfAlreadyAuthenticated();
+      }
+    };
+
+    window.addEventListener("pageshow", handlePageShow);
+    return () => window.removeEventListener("pageshow", handlePageShow);
+  }, []);
 
   function submit(formData: FormData) {
     setError("");
     startTransition(async () => {
       const endpoint = mode === "teacher" ? "/api/auth/teacher-login" : "/api/auth/student-login";
+      const destination = mode === "teacher" ? "/teacher/dashboard" : "/student/home";
       const body = mode === "teacher"
         ? {
             username: String(formData.get("loginId") ?? "").trim(),
@@ -41,8 +71,7 @@ export function LoginForm() {
         return;
       }
 
-      router.replace(mode === "teacher" ? "/teacher/dashboard" : "/student/home");
-      router.refresh();
+      window.location.replace(destination);
     });
   }
 

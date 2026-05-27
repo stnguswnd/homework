@@ -10,6 +10,7 @@ import { Card } from "@/components/ui/Card";
 import { completeListeningAssignment } from "@/features/submissions/api/submissionApi";
 import { formatDateTime, formatDue } from "@/lib/format";
 import type { Assignment } from "@/types/assignment";
+import { ReadyStepButton } from "./ReadyStepButton";
 
 function Header({ assignment }: { assignment: Assignment }) {
   return (
@@ -101,7 +102,7 @@ export function ListeningHomework({ assignment }: { assignment: Assignment }) {
       </Card>
       <div className="grid gap-3 sm:grid-cols-2">
         <Button type="button" className="hover:bg-action" onClick={playOriginalAudio}>듣고 연습하기</Button>
-        <Button type="button" disabled={!hasListenedFullAudio || pending} onClick={() => setCompleteOpen(true)}>완료하기</Button>
+        <ReadyStepButton disabled={!hasListenedFullAudio || pending} onClick={() => setCompleteOpen(true)} tooltip="음원을 끝까지 들었어요. 완료하기를 누를 수 있어요.">완료하기</ReadyStepButton>
       </div>
       {completeOpen && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/35 p-4" role="dialog" aria-modal="true">
